@@ -1,0 +1,93 @@
+diff --git a/server/Android.bp b/server/Android.bp
+index 06ea0bab518101830df99bf33b9fa1afdd7ec0d8..f16b2d801cd0fb8e70715a31322feb3761d38e1b 100644
+--- a/server/Android.bp
++++ b/server/Android.bp
+@@ -40,6 +40,7 @@ cc_library_static {
+     defaults: [
+         "netd_aidl_interface_lateststable_cpp_shared",
+         "netd_defaults",
++        "needs_netd_direct_connect_rule_defaults",
+     ],
+     include_dirs: [
+         "system/netd/include",
+diff --git a/server/Controllers.cpp b/server/Controllers.cpp
+index 00ee186d6f72109f3f4e80de076667d09664ce9d..faa6f135597155298aca38797c0e5f4b58a8a3c6 100644
+--- a/server/Controllers.cpp
++++ b/server/Controllers.cpp
+@@ -284,7 +284,7 @@ void Controllers::init() {
+         // As such simply exit netd.  This may crash loop the system, but by failing
+         // to bootup we will trigger rollback and thus this offers us protection against
+         // a mainline update breaking things.
+-        exit(1);
++        // exit(1);
+     }
+     gLog.info("Enabling bandwidth control: %" PRId64 "us", s.getTimeAndResetUs());
+ 
+diff --git a/server/RouteController.cpp b/server/RouteController.cpp
+index 9b6a7ca3d1f924bf3bfa7511dfabdcfeded869c0..4bb74213cd847ee7287ca3ea08d08ff2d6d5af72 100644
+--- a/server/RouteController.cpp
++++ b/server/RouteController.cpp
+@@ -766,6 +766,24 @@ int RouteController::configureDummyNetwork() {
+     return 0;
+ }
+ 
++#ifdef NEEDS_NETD_DIRECT_CONNECT_RULE
++// Add a new rule to look up the 'main' table, with the same selectors as the "default network"
++// rule, but with a lower priority. We will never create routes in the main table; it should only be
++// used for directly-connected routes implicitly created by the kernel when adding IP addresses.
++// This is necessary, for example, when adding a route through a directly-connected gateway: in
++// order to add the route, there must already be a directly-connected route that covers the gateway.
++[[nodiscard]] int addDirectlyConnectedRule() {
++    Fwmark fwmark;
++    Fwmark mask;
++
++    fwmark.netId = NETID_UNSET;
++    mask.netId = FWMARK_NET_ID_MASK;
++
++    return modifyIpRule(RTM_NEWRULE, RULE_PRIORITY_DIRECTLY_CONNECTED, RT_TABLE_MAIN,
++                        fwmark.intValue, mask.intValue, IIF_NONE, OIF_NONE, UID_ROOT, UID_ROOT);
++}
++#endif
++
+ // Add an explicit unreachable rule close to the end of the prioriy list to make it clear that
+ // relying on the kernel-default "from all lookup main" rule at priority 32766 is not intended
+ // behaviour. We do flush the kernel-default rules at startup, but having an explicit unreachable
+@@ -1233,6 +1251,11 @@ int RouteController::Init(unsigned localNetId) {
+     if (int ret = addLocalNetworkRules(localNetId)) {
+         return ret;
+     }
++#ifdef NEEDS_NETD_DIRECT_CONNECT_RULE
++    if (int ret = addDirectlyConnectedRule()) {
++        return ret;
++    }
++#endif
+     if (int ret = addUnreachableRule()) {
+         return ret;
+     }
+diff --git a/server/RouteController.h b/server/RouteController.h
+index 1b3a093a68eae60c2eab5e4c0d61e295609a42e1..6acd168aa1cc6b4c25e5c7b78abe82595a40d85b 100644
+--- a/server/RouteController.h
++++ b/server/RouteController.h
+@@ -83,6 +83,9 @@ constexpr int32_t RULE_PRIORITY_UID_DEFAULT_NETWORK               = 29000;
+ constexpr int32_t RULE_PRIORITY_UID_DEFAULT_UNREACHABLE           = 30000;
+ constexpr int32_t RULE_PRIORITY_DEFAULT_NETWORK                   = 31000;
+ constexpr int32_t RULE_PRIORITY_UNREACHABLE                       = 32000;
++#ifdef NEEDS_NETD_DIRECT_CONNECT_RULE
++const uint32_t RULE_PRIORITY_DIRECTLY_CONNECTED      = 30000;
++#endif
+ // clang-format on
+ 
+ static const char* V4_FIXED_LOCAL_PREFIXES[] = {
+diff --git a/server/main.cpp b/server/main.cpp
+index 0e81d4e5c102d488d4a7a2ad78badb066032755a..18287d378f18763066adfbecde12cb3ebd9c8265 100644
+--- a/server/main.cpp
++++ b/server/main.cpp
+@@ -134,7 +134,7 @@ int main() {
+ 
+     if (libnetd_updatable_init(cg2_path.c_str())) {
+         ALOGE("libnetd_updatable_init failed");
+-        exit(1);
++        //exit(1);
+     }
+     gLog.info("libnetd_updatable_init success");
+ 

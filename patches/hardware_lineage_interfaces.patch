@@ -1,0 +1,326 @@
+diff --git a/camera/device/1.0-legacy/CameraDevice.cpp b/camera/device/1.0-legacy/CameraDevice.cpp
+index f324e456dd4d4a70fa7f4cbf47ea61d0784e36f0..69ba2fae5a722de9f6a8ea2c229611febd1d7166 100644
+--- a/camera/device/1.0-legacy/CameraDevice.cpp
++++ b/camera/device/1.0-legacy/CameraDevice.cpp
+@@ -15,6 +15,7 @@
+  */
+ 
+ #define LOG_TAG "CamDev@1.0-impl.legacy"
++#include <fcntl.h>
+ #include <hardware/camera.h>
+ #include <hardware/gralloc1.h>
+ #include <hidlmemory/mapping.h>
+diff --git a/usb/1.0-basic/Android.bp b/usb/1.0-basic/Android.bp
+index 1319d0c930eb5ef697a71cb2aa54d48f73cab79d..eb08e91227633186314938a5d5b313e96b1c17a3 100644
+--- a/usb/1.0-basic/Android.bp
++++ b/usb/1.0-basic/Android.bp
+@@ -18,6 +18,10 @@ cc_binary {
+     relative_install_path: "hw",
+     init_rc: ["android.hardware.usb@1.0-service.basic.rc"],
+     vintf_fragments: ["android.hardware.usb@1.0-service.basic.xml"],
++    overrides: [
++        "android.hardware.usb@1.0-service",
++        "android.hardware.usb@1.2-service-qti"
++    ],
+     srcs: ["service.cpp", "Usb.cpp"],
+     shared_libs: [
+         "libbase",
+diff --git a/wifi/1.0-legacy/hidl_struct_util.cpp b/wifi/1.0-legacy/hidl_struct_util.cpp
+index ad2fdb226d89a78802fd0bb8cba0c4deb8fd0f5a..d05a89fd920e5a93f01eadd039fce23f1f8b6040 100644
+--- a/wifi/1.0-legacy/hidl_struct_util.cpp
++++ b/wifi/1.0-legacy/hidl_struct_util.cpp
+@@ -19,6 +19,9 @@
+ 
+ #include "hidl_struct_util.h"
+ 
++
++#pragma GCC diagnostic ignored "-Wswitch"
++
+ namespace android {
+ namespace hardware {
+ namespace wifi {
+@@ -2297,6 +2300,7 @@ WifiChannelWidthInMhz convertLegacyWifiChannelWidthToHidl(
+             return WifiChannelWidthInMhz::WIDTH_INVALID;
+     };
+     CHECK(false) << "Unknown legacy type: " << type;
++     return WifiChannelWidthInMhz::WIDTH_INVALID;
+ }
+ 
+ legacy_hal::wifi_rtt_preamble convertHidlRttPreambleToLegacy(RttPreamble type) {
+@@ -2325,6 +2329,7 @@ RttPreamble convertLegacyRttPreambleToHidl(legacy_hal::wifi_rtt_preamble type) {
+             return RttPreamble::HE;
+     };
+     CHECK(false) << "Unknown legacy type: " << type;
++    return RttPreamble::LEGACY;
+ }
+ 
+ legacy_hal::wifi_rtt_bw convertHidlRttBwToLegacy(RttBw type) {
+@@ -2343,6 +2348,7 @@ legacy_hal::wifi_rtt_bw convertHidlRttBwToLegacy(RttBw type) {
+             return legacy_hal::WIFI_RTT_BW_160;
+     };
+     CHECK(false);
++    return legacy_hal::WIFI_RTT_BW_5;
+ }
+ 
+ RttBw convertLegacyRttBwToHidl(legacy_hal::wifi_rtt_bw type) {
+@@ -2361,6 +2367,7 @@ RttBw convertLegacyRttBwToHidl(legacy_hal::wifi_rtt_bw type) {
+             return RttBw::BW_160MHZ;
+     };
+     CHECK(false) << "Unknown legacy type: " << type;
++    return RttBw::BW_5MHZ;
+ }
+ 
+ legacy_hal::wifi_motion_pattern convertHidlRttMotionPatternToLegacy(
+@@ -2374,6 +2381,7 @@ legacy_hal::wifi_motion_pattern convertHidlRttMotionPatternToLegacy(
+             return legacy_hal::WIFI_MOTION_UNKNOWN;
+     };
+     CHECK(false);
++    return legacy_hal::WIFI_MOTION_NOT_EXPECTED;
+ }
+ 
+ WifiRatePreamble convertLegacyWifiRatePreambleToHidl(uint8_t preamble) {
+@@ -2392,6 +2400,7 @@ WifiRatePreamble convertLegacyWifiRatePreambleToHidl(uint8_t preamble) {
+             return WifiRatePreamble::RESERVED;
+     };
+     CHECK(false) << "Unknown legacy preamble: " << preamble;
++    return WifiRatePreamble::OFDM;
+ }
+ 
+ WifiRateNss convertLegacyWifiRateNssToHidl(uint8_t nss) {
+@@ -2449,6 +2458,7 @@ RttStatus convertLegacyRttStatusToHidl(legacy_hal::wifi_rtt_status status) {
+             return RttStatus::FAILURE;  // TODO: add HIDL enumeration
+     };
+     CHECK(false) << "Unknown legacy status: " << status;
++    return RttStatus::FAILURE;  // TODO: add HIDL enumeration
+ }
+ 
+ bool convertHidlWifiChannelInfoToLegacy(
+diff --git a/wifi/1.0-legacy/service.cpp b/wifi/1.0-legacy/service.cpp
+index 3f7f6094fdf769cc15c3b8cd5290d1d9da9d4a74..d9fa49e6c708a7cd1024ff5b6d6da80cd86e4448 100644
+--- a/wifi/1.0-legacy/service.cpp
++++ b/wifi/1.0-legacy/service.cpp
+@@ -35,11 +35,6 @@ using android::hardware::wifi::V1_4::implementation::legacy_hal::WifiLegacyHal;
+ using android::hardware::wifi::V1_4::implementation::mode_controller::
+     WifiModeController;
+ 
+-#ifdef LAZY_SERVICE
+-const bool kLazyService = true;
+-#else
+-const bool kLazyService = false;
+-#endif
+ 
+ int main(int /*argc*/, char** argv) {
+     android::base::InitLogging(
+@@ -57,14 +52,10 @@ int main(int /*argc*/, char** argv) {
+             std::make_shared<WifiModeController>(),
+             std::make_shared<WifiIfaceUtil>(iface_tool),
+             std::make_shared<WifiFeatureFlags>());
+-    if (kLazyService) {
+-        auto registrar = LazyServiceRegistrar::getInstance();
+-        CHECK_EQ(registrar.registerService(service), android::NO_ERROR)
+-            << "Failed to register wifi HAL";
+-    } else {
+-        CHECK_EQ(service->registerAsService(), android::NO_ERROR)
+-            << "Failed to register wifi HAL";
+-    }
++
++            CHECK_EQ(service->registerAsService(), android::NO_ERROR)
++                << "Failed to register wifi HAL";
++
+ 
+     joinRpcThreadpool();
+ 
+diff --git a/wifi/1.0-legacy/wifi.h b/wifi/1.0-legacy/wifi.h
+index 087d6f71e8285bab695e93a8f59945e4b1f84408..02c659cdfb61a4629008cf8aac5b01e444f17824 100644
+--- a/wifi/1.0-legacy/wifi.h
++++ b/wifi/1.0-legacy/wifi.h
+@@ -17,6 +17,11 @@
+ #ifndef WIFI_H_
+ #define WIFI_H_
+ 
++// HACK: NAN is a macro defined in math.h, which can be included in various
++// headers. This wifi HAL uses an enum called NAN, which does not compile when
++// the macro is defined. Undefine NAN to work around it.
++#undef NAN
++
+ #include <functional>
+ 
+ #include <android-base/macros.h>
+diff --git a/wifi/1.0-legacy/wifi_chip.cpp b/wifi/1.0-legacy/wifi_chip.cpp
+index 8cba46475718338e5a32413444febb0a7a9a2d8c..957cdbf4a4d363febaa9dcd8b475a7c2842e4206 100644
+--- a/wifi/1.0-legacy/wifi_chip.cpp
++++ b/wifi/1.0-legacy/wifi_chip.cpp
+@@ -21,6 +21,7 @@
+ #include <cutils/properties.h>
+ #include <sys/stat.h>
+ #include <sys/sysmacros.h>
++#include <net/if.h>
+ 
+ #include "hidl_return_util.h"
+ #include "hidl_struct_util.h"
+@@ -664,7 +665,36 @@ Return<void> WifiChip::registerEventCallback_1_4(
+                            hidl_status_cb, event_callback);
+ }
+ 
++void WifiChip::QcRemoveAndClearDynamicIfaces() {
++    for (const auto& iface : created_ap_ifaces_) {
++        std::string ifname = iface->getName();
++        legacy_hal::wifi_error legacy_status =
++            legacy_hal_.lock()->deleteVirtualInterface(ifname);
++        if (legacy_status != legacy_hal::WIFI_SUCCESS) {
++            LOG(ERROR) << "Failed to remove interface: " << ifname << " "
++                       << legacyErrorToString(legacy_status);
++        }
++    }
++
++    for (const auto& iface : created_sta_ifaces_) {
++        std::string ifname = iface->getName();
++        legacy_hal::wifi_error legacy_status =
++            legacy_hal_.lock()->deleteVirtualInterface(ifname);
++        if (legacy_status != legacy_hal::WIFI_SUCCESS) {
++            LOG(ERROR) << "Failed to remove interface: " << ifname << " "
++                       << legacyErrorToString(legacy_status);
++        }
++    }
++
++    // created_ap/sta_ifaces are also part of sta/ap_ifaces.
++    // Do no invalidate here.
++
++    created_ap_ifaces_.clear();
++    created_sta_ifaces_.clear();
++}
++
+ void WifiChip::invalidateAndRemoveAllIfaces() {
++    QcRemoveAndClearDynamicIfaces();
+     invalidateAndClearAll(ap_ifaces_);
+     invalidateAndClearAll(nan_ifaces_);
+     invalidateAndClearAll(p2p_ifaces_);
+@@ -824,18 +854,24 @@ std::pair<WifiStatus, sp<IWifiApIface>> WifiChip::createApIfaceInternal() {
+     if (!canCurrentModeSupportIfaceOfTypeWithCurrentIfaces(IfaceType::AP)) {
+         return {createWifiStatus(WifiStatusCode::ERROR_NOT_AVAILABLE), {}};
+     }
++
++    bool iface_created = false;
+     std::string ifname = allocateApIfaceName();
+-    legacy_hal::wifi_error legacy_status =
+-        legacy_hal_.lock()->createVirtualInterface(
+-            ifname,
+-            hidl_struct_util::convertHidlIfaceTypeToLegacy(IfaceType::AP));
+-    if (legacy_status != legacy_hal::WIFI_SUCCESS) {
+-        LOG(ERROR) << "Failed to add interface: " << ifname << " "
+-                   << legacyErrorToString(legacy_status);
+-        return {createWifiStatusFromLegacyError(legacy_status), {}};
++    if (!if_nametoindex(ifname.c_str())) {
++        legacy_hal::wifi_error legacy_status =
++            legacy_hal_.lock()->createVirtualInterface(
++                ifname,
++                hidl_struct_util::convertHidlIfaceTypeToLegacy(IfaceType::AP));
++        if (legacy_status != legacy_hal::WIFI_SUCCESS) {
++            LOG(ERROR) << "Failed to add interface: " << ifname << " "
++                       << legacyErrorToString(legacy_status);
++            return {createWifiStatusFromLegacyError(legacy_status), {}};
++        }
++        iface_created = true;
+     }
+     sp<WifiApIface> iface = new WifiApIface(ifname, legacy_hal_, iface_util_);
+     ap_ifaces_.push_back(iface);
++    if (iface_created) created_ap_ifaces_.push_back(iface);
+     for (const auto& callback : event_cb_handler_.getCallbacks()) {
+         if (!callback->onIfaceAdded(IfaceType::AP, ifname).isOk()) {
+             LOG(ERROR) << "Failed to invoke onIfaceAdded callback";
+@@ -872,11 +908,15 @@ WifiStatus WifiChip::removeApIfaceInternal(const std::string& ifname) {
+     // nan/rtt objects over AP iface. But, there is no harm to do it
+     // here and not make that assumption all over the place.
+     invalidateAndRemoveDependencies(ifname);
+-    legacy_hal::wifi_error legacy_status =
+-        legacy_hal_.lock()->deleteVirtualInterface(ifname);
+-    if (legacy_status != legacy_hal::WIFI_SUCCESS) {
+-        LOG(ERROR) << "Failed to remove interface: " << ifname << " "
+-                   << legacyErrorToString(legacy_status);
++    if (findUsingName(created_ap_ifaces_, ifname) != nullptr) {
++        iface_util_.lock()->setUpState(ifname, false);
++        legacy_hal::wifi_error legacy_status =
++            legacy_hal_.lock()->deleteVirtualInterface(ifname);
++        if (legacy_status != legacy_hal::WIFI_SUCCESS) {
++            LOG(ERROR) << "Failed to remove interface: " << ifname << " "
++                       << legacyErrorToString(legacy_status);
++        }
++        invalidateAndClear(created_ap_ifaces_, iface);
+     }
+     invalidateAndClear(ap_ifaces_, iface);
+     for (const auto& callback : event_cb_handler_.getCallbacks()) {
+@@ -993,18 +1033,23 @@ WifiChip::createStaIfaceInternal() {
+     if (!canCurrentModeSupportIfaceOfTypeWithCurrentIfaces(IfaceType::STA)) {
+         return {createWifiStatus(WifiStatusCode::ERROR_NOT_AVAILABLE), {}};
+     }
++    bool iface_created = false;
+     std::string ifname = allocateStaIfaceName();
+-    legacy_hal::wifi_error legacy_status =
+-        legacy_hal_.lock()->createVirtualInterface(
+-            ifname,
+-            hidl_struct_util::convertHidlIfaceTypeToLegacy(IfaceType::STA));
+-    if (legacy_status != legacy_hal::WIFI_SUCCESS) {
+-        LOG(ERROR) << "Failed to add interface: " << ifname << " "
+-                   << legacyErrorToString(legacy_status);
+-        return {createWifiStatusFromLegacyError(legacy_status), {}};
++    if (!if_nametoindex(ifname.c_str())) {
++        legacy_hal::wifi_error legacy_status =
++            legacy_hal_.lock()->createVirtualInterface(
++                ifname,
++                hidl_struct_util::convertHidlIfaceTypeToLegacy(IfaceType::STA));
++        if (legacy_status != legacy_hal::WIFI_SUCCESS) {
++            LOG(ERROR) << "Failed to add interface: " << ifname << " "
++                       << legacyErrorToString(legacy_status);
++            return {createWifiStatusFromLegacyError(legacy_status), {}};
++        }
++        iface_created = true;
+     }
+     sp<WifiStaIface> iface = new WifiStaIface(ifname, legacy_hal_, iface_util_);
+     sta_ifaces_.push_back(iface);
++    if (iface_created) created_sta_ifaces_.push_back(iface);
+     for (const auto& callback : event_cb_handler_.getCallbacks()) {
+         if (!callback->onIfaceAdded(IfaceType::STA, ifname).isOk()) {
+             LOG(ERROR) << "Failed to invoke onIfaceAdded callback";
+@@ -1038,11 +1083,15 @@ WifiStatus WifiChip::removeStaIfaceInternal(const std::string& ifname) {
+     }
+     // Invalidate & remove any dependent objects first.
+     invalidateAndRemoveDependencies(ifname);
+-    legacy_hal::wifi_error legacy_status =
+-        legacy_hal_.lock()->deleteVirtualInterface(ifname);
+-    if (legacy_status != legacy_hal::WIFI_SUCCESS) {
+-        LOG(ERROR) << "Failed to remove interface: " << ifname << " "
+-                   << legacyErrorToString(legacy_status);
++    if (findUsingName(created_sta_ifaces_, ifname) != nullptr) {
++        iface_util_.lock()->setUpState(ifname, false);
++        legacy_hal::wifi_error legacy_status =
++            legacy_hal_.lock()->deleteVirtualInterface(ifname);
++        if (legacy_status != legacy_hal::WIFI_SUCCESS) {
++            LOG(ERROR) << "Failed to remove interface: " << ifname << " "
++                       << legacyErrorToString(legacy_status);
++        }
++        invalidateAndClear(created_sta_ifaces_, iface);
+     }
+     invalidateAndClear(sta_ifaces_, iface);
+     for (const auto& callback : event_cb_handler_.getCallbacks()) {
+diff --git a/wifi/1.0-legacy/wifi_chip.h b/wifi/1.0-legacy/wifi_chip.h
+index 86720b6f51661039ea024fe73e3c5a5d651692df..2f382070d03379f905ddc55b7c115ce1d31c0c12 100644
+--- a/wifi/1.0-legacy/wifi_chip.h
++++ b/wifi/1.0-legacy/wifi_chip.h
+@@ -258,6 +258,7 @@ class WifiChip : public V1_4::IWifiChip {
+     std::string allocateApIfaceName();
+     std::string allocateStaIfaceName();
+     bool writeRingbufferFilesInternal();
++    void QcRemoveAndClearDynamicIfaces();
+ 
+     ChipId chip_id_;
+     std::weak_ptr<legacy_hal::WifiLegacyHal> legacy_hal_;
+@@ -281,6 +282,9 @@ class WifiChip : public V1_4::IWifiChip {
+     hidl_callback_util::HidlCallbackHandler<IWifiChipEventCallback>
+         event_cb_handler_;
+ 
++    std::vector<sp<WifiApIface>> created_ap_ifaces_;
++    std::vector<sp<WifiStaIface>> created_sta_ifaces_;
++
+     DISALLOW_COPY_AND_ASSIGN(WifiChip);
+ };
+ 

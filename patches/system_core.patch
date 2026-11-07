@@ -1,0 +1,285 @@
+diff --git a/healthd/healthd_draw.cpp b/healthd/healthd_draw.cpp
+index 7c79319445bf22400f2cb5742167aefea86bdde4..cfcdd4a2696302cb55f6f8a544154105db016823 100644
+--- a/healthd/healthd_draw.cpp
++++ b/healthd/healthd_draw.cpp
+@@ -29,19 +29,11 @@
+ #define LOGV(x...) KLOG_DEBUG("charger", x);
+ 
+ static bool get_split_screen() {
+-#if !defined(__ANDROID_VNDK__)
+-    return android::sysprop::ChargerProperties::draw_split_screen().value_or(false);
+-#else
+     return false;
+-#endif
+ }
+ 
+ static int get_split_offset() {
+-#if !defined(__ANDROID_VNDK__)
+-    int64_t value = android::sysprop::ChargerProperties::draw_split_offset().value_or(0);
+-#else
+     int64_t value = 0;
+-#endif
+     if (value < static_cast<int64_t>(std::numeric_limits<int>::min())) {
+         LOGW("draw_split_offset = %" PRId64 " overflow for an int; resetting to %d.\n", value,
+              std::numeric_limits<int>::min());
+diff --git a/healthd/healthd_mode_charger.cpp b/healthd/healthd_mode_charger.cpp
+index 282ffa248900ac57d1a41fab1ba7cfae06dbebdb..6eff2d59df69f36ba0f3c6f7ee7918de753ed333 100644
+--- a/healthd/healthd_mode_charger.cpp
++++ b/healthd/healthd_mode_charger.cpp
+@@ -337,12 +337,6 @@ void Charger::UpdateScreenState(int64_t now) {
+         healthd_draw_ = HealthdDraw::Create(&batt_anim_);
+         if (healthd_draw_ == nullptr) return;
+ 
+-#if !defined(__ANDROID_VNDK__)
+-        if (android::sysprop::ChargerProperties::disable_init_blank().value_or(false)) {
+-            healthd_draw_->blank_screen(true, static_cast<int>(drm_));
+-            screen_blanked_ = true;
+-        }
+-#endif
+     }
+ 
+     /* animation is over, blank screen and leave */
+diff --git a/init/service.cpp b/init/service.cpp
+index 7e43061c4c7e26bc1c3dda6a9fe8f5803696f749..347464a146a0e5a093947c054f83b7d32359250b 100644
+--- a/init/service.cpp
++++ b/init/service.cpp
+@@ -666,11 +666,15 @@ Result<void> Service::Start() {
+                       limit_percent_ != -1 || !limit_property_.empty();
+     errno = -createProcessGroup(proc_attr_.uid, pid_, use_memcg);
+     if (errno != 0) {
++        PLOG(ERROR) << "createProcessGroup(" << proc_attr_.uid << ", " << pid_ <<  ") failed for service '" << name_ << "'";
++
++#if 0
+         if (char byte = 0; write((*pipefd)[1], &byte, 1) < 0) {
+             return ErrnoError() << "sending notification failed";
+         }
+         return Error() << "createProcessGroup(" << proc_attr_.uid << ", " << pid_
+                        << ") failed for service '" << name_ << "'";
++#endif
+     }
+ 
+     if (use_memcg) {
+diff --git a/libprocessgroup/profiles/cgroups.json b/libprocessgroup/profiles/cgroups.json
+index 3e4393df2078c8cd08a50de48a8555f5320f83e9..4ff20339eac7da3abe4ae633df9f3a21ded3ee5f 100644
+--- a/libprocessgroup/profiles/cgroups.json
++++ b/libprocessgroup/profiles/cgroups.json
+@@ -28,18 +28,28 @@
+       "UID": "root",
+       "GID": "system",
+       "Optional": true
++    },
++    {
++      "Controller": "schedtune",
++      "Path": "/dev/stune",
++      "Mode": "0755",
++      "UID": "system",
++      "GID": "system",
++      "Optional": true
++    },
++    {
++      "Controller": "freezer",
++      "Path": "/dev/freezer",
++      "Mode": "0755",
++      "UID": "system",
++      "GID": "system"
+     }
+   ],
+   "Cgroups2": {
+-    "Path": "/sys/fs/cgroup",
+-    "Mode": "0775",
+-    "UID": "system",
+-    "GID": "system",
+-    "Controllers": [
+-      {
+-        "Controller": "freezer",
+-        "Path": "."
+-      }
+-    ]
++    "Path": "/dev/cg2_bpf",
++    "Mode": "0600",
++    "UID": "root",
++    "GID": "root",
++    "Optional": true
+   }
+ }
+diff --git a/libprocessgroup/profiles/task_profiles.json b/libprocessgroup/profiles/task_profiles.json
+index 4092c1a37063bf26083dd3086b27d59a5cef95f7..b616b8690374857faff0aa390811341041a8bb26 100644
+--- a/libprocessgroup/profiles/task_profiles.json
++++ b/libprocessgroup/profiles/task_profiles.json
+@@ -75,7 +75,7 @@
+     {
+       "Name": "FreezerState",
+       "Controller": "freezer",
+-      "File": "cgroup.freeze"
++      "File": "frozen/freezer.state"
+     }
+   ],
+ 
+@@ -97,11 +97,11 @@
+       "Name": "Frozen",
+       "Actions": [
+         {
+-          "Name": "SetAttribute",
++          "Name": "JoinCgroup",
+           "Params":
+           {
+-            "Name": "FreezerState",
+-            "Value": "1"
++            "Controller": "freezer",
++            "Path": "frozen"
+           }
+         }
+       ]
+@@ -110,11 +110,11 @@
+       "Name": "Unfrozen",
+       "Actions": [
+         {
+-          "Name": "SetAttribute",
++          "Name": "JoinCgroup",
+           "Params":
+           {
+-            "Name": "FreezerState",
+-            "Value": "0"
++            "Controller": "freezer",
++            "Path": ""
+           }
+         }
+       ]
+@@ -622,6 +622,32 @@
+           }
+         }
+       ]
++    },
++    {
++      "Name": "FreezerThawed",
++      "Actions": [
++        {
++          "Name": "SetAttribute",
++          "Params":
++          {
++            "Name": "FreezerState",
++            "Value": "THAWED"
++          }
++        }
++      ]
++    },
++    {
++      "Name": "FreezerFrozen",
++      "Actions": [
++        {
++          "Name": "SetAttribute",
++          "Params":
++          {
++            "Name": "FreezerState",
++            "Value": "FROZEN"
++          }
++        }
++      ]
+     }
+   ],
+ 
+diff --git a/libsystem/include/system/camera.h b/libsystem/include/system/camera.h
+index 2ca90c395ba133662b342ff672bc95816f115cc2..990edcf326f3f99198d8db573e71395467ea1149 100644
+--- a/libsystem/include/system/camera.h
++++ b/libsystem/include/system/camera.h
+@@ -88,9 +88,20 @@ enum {
+     // Notify on autofocus start and stop. This is useful in continuous
+     // autofocus - FOCUS_MODE_CONTINUOUS_VIDEO and FOCUS_MODE_CONTINUOUS_PICTURE.
+     CAMERA_MSG_FOCUS_MOVE = 0x0800,       // notifyCallback
++    CAMERA_MSG_VENDOR_START = 0x1000,
++    CAMERA_MSG_STATS_DATA = CAMERA_MSG_VENDOR_START,
++    CAMERA_MSG_META_DATA = 0x2000,
++    CAMERA_MSG_VENDOR_END = 0x8000,
+     CAMERA_MSG_ALL_MSGS = 0xFFFF
+ };
+ 
++/** meta data type in CameraMetaDataCallback */
++enum {
++    CAMERA_META_DATA_ASD = 0x001,    //ASD data
++    CAMERA_META_DATA_FD = 0x002,     //FD/FP data
++    CAMERA_META_DATA_HDR = 0x003,    //Auto HDR data
++};
++
+ /** cmdType in sendCommand functions */
+ enum {
+     CAMERA_CMD_START_SMOOTH_ZOOM = 1,
+@@ -189,7 +200,25 @@ enum {
+      * IMPLEMENTATION_DEFINED, then HALv3 devices will use gralloc usage flags
+      * of SW_READ_OFTEN.
+      */
+-    CAMERA_CMD_SET_VIDEO_FORMAT = 11
++    CAMERA_CMD_SET_VIDEO_FORMAT = 11,
++
++    CAMERA_CMD_VENDOR_START = 20,
++    /**
++     * Commands to enable/disable preview histogram
++     *
++     * Based on user's input to enable/disable histogram from the camera
++     * UI, send the appropriate command to the HAL to turn on/off the histogram
++     * stats and start sending the data to the application.
++     */
++    CAMERA_CMD_HISTOGRAM_ON = CAMERA_CMD_VENDOR_START,
++    CAMERA_CMD_HISTOGRAM_OFF = CAMERA_CMD_VENDOR_START + 1,
++    CAMERA_CMD_HISTOGRAM_SEND_DATA  = CAMERA_CMD_VENDOR_START + 2,
++    CAMERA_CMD_LONGSHOT_ON = CAMERA_CMD_VENDOR_START + 3,
++    CAMERA_CMD_LONGSHOT_OFF = CAMERA_CMD_VENDOR_START + 4,
++    CAMERA_CMD_STOP_LONGSHOT = CAMERA_CMD_VENDOR_START + 5,
++    CAMERA_CMD_METADATA_ON = CAMERA_CMD_VENDOR_START + 6,
++    CAMERA_CMD_METADATA_OFF = CAMERA_CMD_VENDOR_START + 7,
++    CAMERA_CMD_VENDOR_END = 200,
+ };
+ 
+ /** camera fatal errors */
+@@ -284,9 +313,31 @@ typedef struct camera_face {
+      * -2000, -2000 if this is not supported.
+      */
+     int32_t mouth[2];
++    int32_t smile_degree;
++    int32_t smile_score;
++    int32_t blink_detected;
++    int32_t face_recognised;
++    int32_t gaze_angle;
++    int32_t updown_dir;
++    int32_t leftright_dir;
++    int32_t roll_dir;
++    int32_t left_right_gaze;
++    int32_t top_bottom_gaze;
++    int32_t leye_blink;
++    int32_t reye_blink;
+ 
+ } camera_face_t;
+ 
++/**
++ * The information of a data type received in a camera frame.
++ */
++typedef enum {
++    /** Data buffer */
++    CAMERA_FRAME_DATA_BUF = 0x000,
++    /** File descriptor */
++    CAMERA_FRAME_DATA_FD = 0x100
++} camera_frame_data_type_t;
++
+ /**
+  * The metadata of the frame data.
+  */
+diff --git a/rootdir/init.rc b/rootdir/init.rc
+index 2b53d883eadec1e7d60f8c47f595ddbab3f215b5..6913d2d7327b66966a6af867ea9c21439ec5ac87 100644
+--- a/rootdir/init.rc
++++ b/rootdir/init.rc
+@@ -401,6 +401,16 @@ on init
+     chmod 0664 /dev/cpuset/cgroup.procs
+     chmod 0664 /dev/cpuset/camera-daemon/cgroup.procs
+ 
++    # freezer cgroup entries
++    mkdir /dev/freezer/frozen
++    write /dev/freezer/frozen/freezer.state FROZEN
++    chown system system /dev/freezer/cgroup.procs
++    chown system system /dev/freezer/frozen
++    chown system system /dev/freezer/frozen/freezer.state
++    chown system system /dev/freezer/frozen/cgroup.procs
++
++    chmod 0664 /dev/freezer/frozen/freezer.state
++
+     # make the PSI monitor accessible to others
+     chown system system /proc/pressure/memory
+     chmod 0664 /proc/pressure/memory

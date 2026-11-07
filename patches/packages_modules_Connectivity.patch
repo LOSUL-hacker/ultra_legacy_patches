@@ -1,0 +1,189 @@
+diff --git a/netd/BpfHandler.cpp b/netd/BpfHandler.cpp
+index 6ae26c38f159bf627784672258fb131adcfdd2d9..8262f75305bcb3f6d4982fe41912309bf6364d1c 100644
+--- a/netd/BpfHandler.cpp
++++ b/netd/BpfHandler.cpp
+@@ -71,8 +71,15 @@ static Status initPrograms(const char* cg2_path) {
+         ALOGE("Failed to open the cgroup directory: %s", strerror(ret));
+         return statusFromErrno(ret, "Open the cgroup directory failed");
+     }
+-    RETURN_IF_NOT_OK(attachProgramToCgroup(BPF_EGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_EGRESS));
+-    RETURN_IF_NOT_OK(attachProgramToCgroup(BPF_INGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_INGRESS));
++    auto ret = attachProgramToCgroup(BPF_EGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_EGRESS);
++    if (!isOk(ret)) {
++        ALOGE("Failed loading egress program");
++    }
++
++    auto ret2 = attachProgramToCgroup(BPF_INGRESS_PROG_PATH, cg_fd, BPF_CGROUP_INET_INGRESS);
++    if (!isOk(ret)) {
++        ALOGE("Failed loading ingress program");
++    }
+ 
+     // For the devices that support cgroup socket filter, the socket filter
+     // should be loaded successfully by bpfloader. So we attach the filter to
+diff --git a/service-t/jni/com_android_server_net_NetworkStatsService.cpp b/service-t/jni/com_android_server_net_NetworkStatsService.cpp
+index 39cbaf716fc0ae4b79963d91eeea567cbdf4cca5..90ae7763652897949c851abf5450d38b0dcdfab7 100644
+--- a/service-t/jni/com_android_server_net_NetworkStatsService.cpp
++++ b/service-t/jni/com_android_server_net_NetworkStatsService.cpp
+@@ -36,6 +36,9 @@ using android::bpf::bpfGetIfaceStats;
+ 
+ namespace android {
+ 
++static const char* QTAGUID_IFACE_STATS = "/proc/net/xt_qtaguid/iface_stat_fmt";
++static const char* QTAGUID_UID_STATS = "/proc/net/xt_qtaguid/stats";
++
+ // NOTE: keep these in sync with TrafficStats.java
+ static const uint64_t UNKNOWN = -1;
+ 
+@@ -67,13 +70,93 @@ static uint64_t getStatsType(Stats* stats, StatsType type) {
+     }
+ }
+ 
++static int parseIfaceStats(const char* iface, Stats* stats) {
++    FILE *fp = fopen(QTAGUID_IFACE_STATS, "r");
++    if (fp == NULL) {
++        return -1;
++    }
++
++    char buffer[384];
++    char cur_iface[32];
++    bool foundTcp = false;
++    uint64_t rxBytes, rxPackets, txBytes, txPackets, tcpRxPackets, tcpTxPackets;
++
++    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
++        int matched = sscanf(buffer, "%31s %" SCNu64 " %" SCNu64 " %" SCNu64
++                " %" SCNu64 " " "%*u %" SCNu64 " %*u %*u %*u %*u "
++                "%*u %" SCNu64 " %*u %*u %*u %*u", cur_iface, &rxBytes,
++                &rxPackets, &txBytes, &txPackets, &tcpRxPackets, &tcpTxPackets);
++        if (matched >= 5) {
++            if (matched == 7) {
++                foundTcp = true;
++            }
++            if (!iface || !strcmp(iface, cur_iface)) {
++                stats->rxBytes += rxBytes;
++                stats->rxPackets += rxPackets;
++                stats->txBytes += txBytes;
++                stats->txPackets += txPackets;
++                if (matched == 7) {
++                    stats->tcpRxPackets += tcpRxPackets;
++                    stats->tcpTxPackets += tcpTxPackets;
++                }
++            }
++        }
++    }
++
++    if (!foundTcp) {
++        stats->tcpRxPackets = UNKNOWN;
++        stats->tcpTxPackets = UNKNOWN;
++    }
++
++    if (fclose(fp) != 0) {
++        return -1;
++    }
++    return 0;
++}
++
++static int parseUidStats(const uint32_t uid, Stats* stats) {
++    FILE *fp = fopen(QTAGUID_UID_STATS, "r");
++    if (fp == NULL) {
++        return -1;
++    }
++
++    char buffer[384];
++    char iface[32];
++    uint32_t idx, cur_uid, set;
++    uint64_t tag, rxBytes, rxPackets, txBytes, txPackets;
++
++    while (fgets(buffer, sizeof(buffer), fp) != NULL) {
++        if (sscanf(buffer,
++                "%" SCNu32 " %31s 0x%" SCNx64 " %u %u %" SCNu64 " %" SCNu64
++                " %" SCNu64 " %" SCNu64 "",
++                &idx, iface, &tag, &cur_uid, &set, &rxBytes, &rxPackets,
++                &txBytes, &txPackets) == 9) {
++            if (uid == cur_uid && tag == 0L) {
++                stats->rxBytes += rxBytes;
++                stats->rxPackets += rxPackets;
++                stats->txBytes += txBytes;
++                stats->txPackets += txPackets;
++            }
++        }
++    }
++
++    if (fclose(fp) != 0) {
++        return -1;
++    }
++    return 0;
++}
++
+ static jlong getTotalStat(JNIEnv* env, jclass clazz, jint type) {
+     Stats stats = {};
+ 
+     if (bpfGetIfaceStats(NULL, &stats) == 0) {
+         return getStatsType(&stats, (StatsType) type);
+     } else {
+-        return UNKNOWN;
++        if (parseIfaceStats(NULL, &stats) == 0) {
++            return getStatsType(&stats, (StatsType) type);
++        } else {
++            return UNKNOWN;
++        }
+     }
+ }
+ 
+@@ -88,7 +171,11 @@ static jlong getIfaceStat(JNIEnv* env, jclass clazz, jstring iface, jint type) {
+     if (bpfGetIfaceStats(iface8.c_str(), &stats) == 0) {
+         return getStatsType(&stats, (StatsType) type);
+     } else {
+-        return UNKNOWN;
++        if (parseIfaceStats(iface8.c_str(), &stats) == 0) {
++            return getStatsType(&stats, (StatsType) type);
++        } else {
++            return UNKNOWN;
++        }
+     }
+ }
+ 
+@@ -98,7 +185,11 @@ static jlong getUidStat(JNIEnv* env, jclass clazz, jint uid, jint type) {
+     if (bpfGetUidStats(uid, &stats) == 0) {
+         return getStatsType(&stats, (StatsType) type);
+     } else {
+-        return UNKNOWN;
++        if (parseUidStats(uid, &stats) == 0) {
++            return getStatsType(&stats, (StatsType) type);
++        } else {
++            return UNKNOWN;
++        }
+     }
+ }
+ 
+diff --git a/service-t/native/libs/libnetworkstats/BpfNetworkStats.cpp b/service-t/native/libs/libnetworkstats/BpfNetworkStats.cpp
+index 9ebef4d6d2a8e9759bcdd620e4cba6ce468f15fc..ee30f3db3013084547eca758862011906343256c 100644
+--- a/service-t/native/libs/libnetworkstats/BpfNetworkStats.cpp
++++ b/service-t/native/libs/libnetworkstats/BpfNetworkStats.cpp
+@@ -102,13 +102,13 @@ int bpfGetIfaceStatsInternal(const char* iface, Stats* stats,
+ int bpfGetIfaceStats(const char* iface, Stats* stats) {
+     BpfMapRO<uint32_t, StatsValue> ifaceStatsMap(IFACE_STATS_MAP_PATH);
+     int ret;
+-    if (!ifaceStatsMap.isValid()) {
++    if (!ifaceStatsMap.isValid() || !ifaceStatsMap.isOk()) {
+         ret = -errno;
+         ALOGE("get ifaceStats map fd failed: %s", strerror(errno));
+         return ret;
+     }
+     BpfMapRO<uint32_t, IfaceValue> ifaceIndexNameMap(IFACE_INDEX_NAME_MAP_PATH);
+-    if (!ifaceIndexNameMap.isValid()) {
++    if (!ifaceIndexNameMap.isValid() || !ifaceStatsMap.isOk()) {
+         ret = -errno;
+         ALOGE("get ifaceIndexName map fd failed: %s", strerror(errno));
+         return ret;
+diff --git a/service-t/src/com/android/server/net/NetworkStatsService.java b/service-t/src/com/android/server/net/NetworkStatsService.java
+index 4f0f3411a596b4144b493bf3d9baabdfe07c0fea..d45e8fa58e1d1ed0059cede37e47a80750179be6 100644
+--- a/service-t/src/com/android/server/net/NetworkStatsService.java
++++ b/service-t/src/com/android/server/net/NetworkStatsService.java
+@@ -2421,6 +2421,7 @@ public class NetworkStatsService extends INetworkStatsService.Stub {
+      * @param uid
+      */
+     private void deleteKernelTagData(int uid) {
++        if(mCookieTagMap == null) return;
+         try {
+             mCookieTagMap.forEach((key, value) -> {
+                 // If SkDestroyListener deletes the socket tag while this code is running,

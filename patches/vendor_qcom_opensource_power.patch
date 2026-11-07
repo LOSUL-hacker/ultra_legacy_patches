@@ -1,0 +1,613 @@
+diff --git a/power-8084.c b/power-8084.c
+index 0577db4b0462adbb0208b9918a1614e2de671d1e..e27b11d7a715071923c42352472973cfbe73810f 100644
+--- a/power-8084.c
++++ b/power-8084.c
+@@ -35,7 +35,6 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+-#include <time.h>
+ 
+ #define LOG_TAG "QTI PowerHAL"
+ #include <hardware/hardware.h>
+@@ -155,71 +154,6 @@ static int resources_launch[] = {
+ };
+ // clang-format on
+ 
+-const int kDefaultInteractiveDuration = 200; /* ms */
+-const int kMinFlingDuration = 1500;          /* ms */
+-const int kMaxInteractiveDuration = 5000;    /* ms */
+-const int kMaxLaunchDuration = 5000;         /* ms */
+-
+-static void process_interaction_hint(void* data) {
+-    static struct timespec s_previous_boost_timespec;
+-
+-    struct timespec cur_boost_timespec;
+-    long long elapsed_time;
+-    int duration = kDefaultInteractiveDuration;
+-
+-    if (data) {
+-        int input_duration = *((int*)data);
+-        if (input_duration > duration) {
+-            duration = (input_duration > kMaxInteractiveDuration) ? kMaxInteractiveDuration
+-                                                                  : input_duration;
+-        }
+-    }
+-
+-    clock_gettime(CLOCK_MONOTONIC, &cur_boost_timespec);
+-
+-    elapsed_time = calc_timespan_us(s_previous_boost_timespec, cur_boost_timespec);
+-    // don't hint if it's been less than 250ms since last boost
+-    // also detect if we're doing anything resembling a fling
+-    // support additional boosting in case of flings
+-    if (elapsed_time < 250000 && duration <= 750) {
+-        return;
+-    }
+-    s_previous_boost_timespec = cur_boost_timespec;
+-
+-    if (duration >= kMinFlingDuration) {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
+-                    resources_interaction_fling_boost);
+-    } else {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_boost), resources_interaction_boost);
+-    }
+-}
+-
+-static int process_activity_launch_hint(void* data) {
+-    static int launch_handle = -1;
+-    static int launch_mode = 0;
+-
+-    // release lock early if launch has finished
+-    if (!data) {
+-        if (CHECK_HANDLE(launch_handle)) {
+-            release_request(launch_handle);
+-            launch_handle = -1;
+-        }
+-        launch_mode = 0;
+-        return HINT_HANDLED;
+-    }
+-
+-    if (!launch_mode) {
+-        launch_handle = interaction_with_handle(launch_handle, kMaxLaunchDuration,
+-                                                ARRAY_SIZE(resources_launch), resources_launch);
+-        if (!CHECK_HANDLE(launch_handle)) {
+-            ALOGE("Failed to perform launch boost");
+-            return HINT_NONE;
+-        }
+-        launch_mode = 1;
+-    }
+-    return HINT_HANDLED;
+-}
+-
+ int power_hint_override(power_hint_t hint, void* data) {
+     int ret_val = HINT_NONE;
+     switch (hint) {
+@@ -229,13 +163,6 @@ int power_hint_override(power_hint_t hint, void* data) {
+         case POWER_HINT_VIDEO_DECODE:
+             ret_val = process_video_decode_hint(data);
+             break;
+-        case POWER_HINT_INTERACTION:
+-            process_interaction_hint(data);
+-            ret_val = HINT_HANDLED;
+-            break;
+-        case POWER_HINT_LAUNCH:
+-            ret_val = process_activity_launch_hint(data);
+-            break;
+         default:
+             break;
+     }
+diff --git a/power-8226.c b/power-8226.c
+index 4521f5d3c84207437cf857ceaf1b0dd6d9c3c8c8..26ac79554b91afcc86063664c3ae5015c10fa633 100644
+--- a/power-8226.c
++++ b/power-8226.c
+@@ -35,7 +35,6 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+-#include <time.h>
+ 
+ #define LOG_TAG "QTI PowerHAL"
+ #include <hardware/hardware.h>
+@@ -132,38 +131,6 @@ static int resources_interaction_boost[] = {
+ };
+ // clang-format on
+ 
+-const int kDefaultInteractiveDuration = 500; /* ms */
+-const int kMaxInteractiveDuration = 5000;    /* ms */
+-
+-static void process_interaction_hint(void* data) {
+-    static struct timespec s_previous_boost_timespec;
+-
+-    struct timespec cur_boost_timespec;
+-    long long elapsed_time;
+-    int duration = kDefaultInteractiveDuration;
+-
+-    if (data) {
+-        int input_duration = *((int*)data);
+-        if (input_duration > duration) {
+-            duration = (input_duration > kMaxInteractiveDuration) ? kMaxInteractiveDuration
+-                                                                  : input_duration;
+-        }
+-    }
+-
+-    clock_gettime(CLOCK_MONOTONIC, &cur_boost_timespec);
+-
+-    elapsed_time = calc_timespan_us(s_previous_boost_timespec, cur_boost_timespec);
+-    // don't hint if it's been less than 250ms since last boost
+-    // also detect if we're doing anything resembling a fling
+-    // support additional boosting in case of flings
+-    if (elapsed_time < 250000 && duration <= 750) {
+-        return;
+-    }
+-    s_previous_boost_timespec = cur_boost_timespec;
+-
+-    interaction(duration, ARRAY_SIZE(resources_interaction_boost), resources_interaction_boost);
+-}
+-
+ int power_hint_override(power_hint_t hint, void* data) {
+     int ret_val = HINT_NONE;
+     switch (hint) {
+@@ -173,10 +140,6 @@ int power_hint_override(power_hint_t hint, void* data) {
+         case POWER_HINT_VIDEO_DECODE:
+             ret_val = process_video_decode_hint(data);
+             break;
+-        case POWER_HINT_INTERACTION:
+-            process_interaction_hint(data);
+-            ret_val = HINT_HANDLED;
+-            break;
+         default:
+             break;
+     }
+diff --git a/power-8610.c b/power-8610.c
+index 4521f5d3c84207437cf857ceaf1b0dd6d9c3c8c8..26ac79554b91afcc86063664c3ae5015c10fa633 100644
+--- a/power-8610.c
++++ b/power-8610.c
+@@ -35,7 +35,6 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+-#include <time.h>
+ 
+ #define LOG_TAG "QTI PowerHAL"
+ #include <hardware/hardware.h>
+@@ -132,38 +131,6 @@ static int resources_interaction_boost[] = {
+ };
+ // clang-format on
+ 
+-const int kDefaultInteractiveDuration = 500; /* ms */
+-const int kMaxInteractiveDuration = 5000;    /* ms */
+-
+-static void process_interaction_hint(void* data) {
+-    static struct timespec s_previous_boost_timespec;
+-
+-    struct timespec cur_boost_timespec;
+-    long long elapsed_time;
+-    int duration = kDefaultInteractiveDuration;
+-
+-    if (data) {
+-        int input_duration = *((int*)data);
+-        if (input_duration > duration) {
+-            duration = (input_duration > kMaxInteractiveDuration) ? kMaxInteractiveDuration
+-                                                                  : input_duration;
+-        }
+-    }
+-
+-    clock_gettime(CLOCK_MONOTONIC, &cur_boost_timespec);
+-
+-    elapsed_time = calc_timespan_us(s_previous_boost_timespec, cur_boost_timespec);
+-    // don't hint if it's been less than 250ms since last boost
+-    // also detect if we're doing anything resembling a fling
+-    // support additional boosting in case of flings
+-    if (elapsed_time < 250000 && duration <= 750) {
+-        return;
+-    }
+-    s_previous_boost_timespec = cur_boost_timespec;
+-
+-    interaction(duration, ARRAY_SIZE(resources_interaction_boost), resources_interaction_boost);
+-}
+-
+ int power_hint_override(power_hint_t hint, void* data) {
+     int ret_val = HINT_NONE;
+     switch (hint) {
+@@ -173,10 +140,6 @@ int power_hint_override(power_hint_t hint, void* data) {
+         case POWER_HINT_VIDEO_DECODE:
+             ret_val = process_video_decode_hint(data);
+             break;
+-        case POWER_HINT_INTERACTION:
+-            process_interaction_hint(data);
+-            ret_val = HINT_HANDLED;
+-            break;
+         default:
+             break;
+     }
+diff --git a/power-8916.c b/power-8916.c
+index 82d14d94332385c83847c54e852a7cb8bbec8a8c..d73c09bbf2373903d4a37613f467a43edac6f5fd 100644
+--- a/power-8916.c
++++ b/power-8916.c
+@@ -36,7 +36,6 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+-#include <time.h>
+ 
+ #define LOG_TAG "QTI PowerHAL"
+ #include <hardware/hardware.h>
+@@ -90,84 +89,12 @@ static int resources_launch[] = {
+ };
+ // clang-format on
+ 
+-const int kDefaultInteractiveDuration = 500; /* ms */
+-const int kMinFlingDuration = 1500;          /* ms */
+-const int kMaxInteractiveDuration = 5000;    /* ms */
+-const int kMaxLaunchDuration = 5000;         /* ms */
+-
+-static void process_interaction_hint(void* data) {
+-    static struct timespec s_previous_boost_timespec;
+-
+-    struct timespec cur_boost_timespec;
+-    long long elapsed_time;
+-    int duration = kDefaultInteractiveDuration;
+-
+-    if (data) {
+-        int input_duration = *((int*)data);
+-        if (input_duration > duration) {
+-            duration = (input_duration > kMaxInteractiveDuration) ? kMaxInteractiveDuration
+-                                                                  : input_duration;
+-        }
+-    }
+-
+-    clock_gettime(CLOCK_MONOTONIC, &cur_boost_timespec);
+-
+-    elapsed_time = calc_timespan_us(s_previous_boost_timespec, cur_boost_timespec);
+-    // don't hint if it's been less than 250ms since last boost
+-    // also detect if we're doing anything resembling a fling
+-    // support additional boosting in case of flings
+-    if (elapsed_time < 250000 && duration <= 750) {
+-        return;
+-    }
+-    s_previous_boost_timespec = cur_boost_timespec;
+-
+-    if (duration >= kMinFlingDuration) {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
+-                    resources_interaction_fling_boost);
+-    } else {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_boost), resources_interaction_boost);
+-    }
+-}
+-
+-static int process_activity_launch_hint(void* data) {
+-    static int launch_handle = -1;
+-    static int launch_mode = 0;
+-
+-    // release lock early if launch has finished
+-    if (!data) {
+-        if (CHECK_HANDLE(launch_handle)) {
+-            release_request(launch_handle);
+-            launch_handle = -1;
+-        }
+-        launch_mode = 0;
+-        return HINT_HANDLED;
+-    }
+-
+-    if (!launch_mode) {
+-        launch_handle = interaction_with_handle(launch_handle, kMaxLaunchDuration,
+-                                                ARRAY_SIZE(resources_launch), resources_launch);
+-        if (!CHECK_HANDLE(launch_handle)) {
+-            ALOGE("Failed to perform launch boost");
+-            return HINT_NONE;
+-        }
+-        launch_mode = 1;
+-    }
+-    return HINT_HANDLED;
+-}
+-
+ int power_hint_override(power_hint_t hint, void* data) {
+     int ret_val = HINT_NONE;
+     switch (hint) {
+         case POWER_HINT_VIDEO_ENCODE: /* Do nothing for encode case */
+             ret_val = HINT_HANDLED;
+             break;
+-        case POWER_HINT_INTERACTION:
+-            process_interaction_hint(data);
+-            ret_val = HINT_HANDLED;
+-            break;
+-        case POWER_HINT_LAUNCH:
+-            ret_val = process_activity_launch_hint(data);
+-            break;
+         default:
+             break;
+     }
+diff --git a/power-8974.c b/power-8974.c
+index f774e70c6d6b87a567478007954137b0bcd7073c..a56e4815d69ba641ca68e26749dc0fdd5c72af42 100644
+--- a/power-8974.c
++++ b/power-8974.c
+@@ -35,7 +35,6 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+-#include <time.h>
+ 
+ #define LOG_TAG "QTI PowerHAL"
+ #include <hardware/hardware.h>
+@@ -167,71 +166,6 @@ static int resources_launch[] = {
+ };
+ // clang-format on
+ 
+-const int kDefaultInteractiveDuration = 500; /* ms */
+-const int kMinFlingDuration = 1500;          /* ms */
+-const int kMaxInteractiveDuration = 5000;    /* ms */
+-const int kMaxLaunchDuration = 5000;         /* ms */
+-
+-static void process_interaction_hint(void* data) {
+-    static struct timespec s_previous_boost_timespec;
+-
+-    struct timespec cur_boost_timespec;
+-    long long elapsed_time;
+-    int duration = kDefaultInteractiveDuration;
+-
+-    if (data) {
+-        int input_duration = *((int*)data);
+-        if (input_duration > duration) {
+-            duration = (input_duration > kMaxInteractiveDuration) ? kMaxInteractiveDuration
+-                                                                  : input_duration;
+-        }
+-    }
+-
+-    clock_gettime(CLOCK_MONOTONIC, &cur_boost_timespec);
+-
+-    elapsed_time = calc_timespan_us(s_previous_boost_timespec, cur_boost_timespec);
+-    // don't hint if it's been less than 250ms since last boost
+-    // also detect if we're doing anything resembling a fling
+-    // support additional boosting in case of flings
+-    if (elapsed_time < 250000 && duration <= 750) {
+-        return;
+-    }
+-    s_previous_boost_timespec = cur_boost_timespec;
+-
+-    if (duration >= kMinFlingDuration) {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
+-                    resources_interaction_fling_boost);
+-    } else {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_boost), resources_interaction_boost);
+-    }
+-}
+-
+-static int process_activity_launch_hint(void* data) {
+-    static int launch_handle = -1;
+-    static int launch_mode = 0;
+-
+-    // release lock early if launch has finished
+-    if (!data) {
+-        if (CHECK_HANDLE(launch_handle)) {
+-            release_request(launch_handle);
+-            launch_handle = -1;
+-        }
+-        launch_mode = 0;
+-        return HINT_HANDLED;
+-    }
+-
+-    if (!launch_mode) {
+-        launch_handle = interaction_with_handle(launch_handle, kMaxLaunchDuration,
+-                                                ARRAY_SIZE(resources_launch), resources_launch);
+-        if (!CHECK_HANDLE(launch_handle)) {
+-            ALOGE("Failed to perform launch boost");
+-            return HINT_NONE;
+-        }
+-        launch_mode = 1;
+-    }
+-    return HINT_HANDLED;
+-}
+-
+ int power_hint_override(power_hint_t hint, void* data) {
+     int ret_val = HINT_NONE;
+     switch (hint) {
+@@ -241,13 +175,6 @@ int power_hint_override(power_hint_t hint, void* data) {
+         case POWER_HINT_VIDEO_DECODE:
+             ret_val = process_video_decode_hint(data);
+             break;
+-        case POWER_HINT_INTERACTION:
+-            process_interaction_hint(data);
+-            ret_val = HINT_HANDLED;
+-            break;
+-        case POWER_HINT_LAUNCH:
+-            ret_val = process_activity_launch_hint(data);
+-            break;
+         default:
+             break;
+     }
+diff --git a/power-8992.c b/power-8992.c
+index 57ceb5c965a26b3c64b846a14ede72f2041f7fc1..8cd8368b35aeba228d9241b24315839ed07d5e26 100644
+--- a/power-8992.c
++++ b/power-8992.c
+@@ -35,7 +35,6 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+-#include <time.h>
+ 
+ #define LOG_TAG "QTI PowerHAL"
+ #include <hardware/hardware.h>
+@@ -147,71 +146,6 @@ static int resources_launch[] = {
+ };
+ // clang-format on
+ 
+-const int kDefaultInteractiveDuration = 500; /* ms */
+-const int kMinFlingDuration = 1500;          /* ms */
+-const int kMaxInteractiveDuration = 5000;    /* ms */
+-const int kMaxLaunchDuration = 5000;         /* ms */
+-
+-static void process_interaction_hint(void* data) {
+-    static struct timespec s_previous_boost_timespec;
+-
+-    struct timespec cur_boost_timespec;
+-    long long elapsed_time;
+-    int duration = kDefaultInteractiveDuration;
+-
+-    if (data) {
+-        int input_duration = *((int*)data);
+-        if (input_duration > duration) {
+-            duration = (input_duration > kMaxInteractiveDuration) ? kMaxInteractiveDuration
+-                                                                  : input_duration;
+-        }
+-    }
+-
+-    clock_gettime(CLOCK_MONOTONIC, &cur_boost_timespec);
+-
+-    elapsed_time = calc_timespan_us(s_previous_boost_timespec, cur_boost_timespec);
+-    // don't hint if it's been less than 250ms since last boost
+-    // also detect if we're doing anything resembling a fling
+-    // support additional boosting in case of flings
+-    if (elapsed_time < 250000 && duration <= 750) {
+-        return;
+-    }
+-    s_previous_boost_timespec = cur_boost_timespec;
+-
+-    if (duration >= kMinFlingDuration) {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
+-                    resources_interaction_fling_boost);
+-    } else {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_boost), resources_interaction_boost);
+-    }
+-}
+-
+-static int process_activity_launch_hint(void* data) {
+-    static int launch_handle = -1;
+-    static int launch_mode = 0;
+-
+-    // release lock early if launch has finished
+-    if (!data) {
+-        if (CHECK_HANDLE(launch_handle)) {
+-            release_request(launch_handle);
+-            launch_handle = -1;
+-        }
+-        launch_mode = 0;
+-        return HINT_HANDLED;
+-    }
+-
+-    if (!launch_mode) {
+-        launch_handle = interaction_with_handle(launch_handle, kMaxLaunchDuration,
+-                                                ARRAY_SIZE(resources_launch), resources_launch);
+-        if (!CHECK_HANDLE(launch_handle)) {
+-            ALOGE("Failed to perform launch boost");
+-            return HINT_NONE;
+-        }
+-        launch_mode = 1;
+-    }
+-    return HINT_HANDLED;
+-}
+-
+ int power_hint_override(power_hint_t hint, void* data) {
+     int ret_val = HINT_NONE;
+     switch (hint) {
+@@ -221,13 +155,6 @@ int power_hint_override(power_hint_t hint, void* data) {
+         case POWER_HINT_VIDEO_DECODE:
+             ret_val = process_video_decode_hint(data);
+             break;
+-        case POWER_HINT_INTERACTION:
+-            process_interaction_hint(data);
+-            ret_val = HINT_HANDLED;
+-            break;
+-        case POWER_HINT_LAUNCH:
+-            ret_val = process_activity_launch_hint(data);
+-            break;
+         default:
+             break;
+     }
+diff --git a/power-8994.c b/power-8994.c
+index df6bd2a65b78a24dbff595d031859f4b40966a49..1fa68267a22acda52b4c218d0686f57ce6732e99 100644
+--- a/power-8994.c
++++ b/power-8994.c
+@@ -35,7 +35,6 @@
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <sys/types.h>
+-#include <time.h>
+ 
+ #define LOG_TAG "QTI PowerHAL"
+ #include <hardware/hardware.h>
+@@ -147,71 +146,6 @@ static int resources_launch[] = {
+ };
+ // clang-format on
+ 
+-const int kDefaultInteractiveDuration = 500; /* ms */
+-const int kMinFlingDuration = 1500;          /* ms */
+-const int kMaxInteractiveDuration = 5000;    /* ms */
+-const int kMaxLaunchDuration = 5000;         /* ms */
+-
+-static void process_interaction_hint(void* data) {
+-    static struct timespec s_previous_boost_timespec;
+-
+-    struct timespec cur_boost_timespec;
+-    long long elapsed_time;
+-    int duration = kDefaultInteractiveDuration;
+-
+-    if (data) {
+-        int input_duration = *((int*)data);
+-        if (input_duration > duration) {
+-            duration = (input_duration > kMaxInteractiveDuration) ? kMaxInteractiveDuration
+-                                                                  : input_duration;
+-        }
+-    }
+-
+-    clock_gettime(CLOCK_MONOTONIC, &cur_boost_timespec);
+-
+-    elapsed_time = calc_timespan_us(s_previous_boost_timespec, cur_boost_timespec);
+-    // don't hint if it's been less than 250ms since last boost
+-    // also detect if we're doing anything resembling a fling
+-    // support additional boosting in case of flings
+-    if (elapsed_time < 250000 && duration <= 750) {
+-        return;
+-    }
+-    s_previous_boost_timespec = cur_boost_timespec;
+-
+-    if (duration >= kMinFlingDuration) {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_fling_boost),
+-                    resources_interaction_fling_boost);
+-    } else {
+-        interaction(duration, ARRAY_SIZE(resources_interaction_boost), resources_interaction_boost);
+-    }
+-}
+-
+-static int process_activity_launch_hint(void* data) {
+-    static int launch_handle = -1;
+-    static int launch_mode = 0;
+-
+-    // release lock early if launch has finished
+-    if (!data) {
+-        if (CHECK_HANDLE(launch_handle)) {
+-            release_request(launch_handle);
+-            launch_handle = -1;
+-        }
+-        launch_mode = 0;
+-        return HINT_HANDLED;
+-    }
+-
+-    if (!launch_mode) {
+-        launch_handle = interaction_with_handle(launch_handle, kMaxLaunchDuration,
+-                                                ARRAY_SIZE(resources_launch), resources_launch);
+-        if (!CHECK_HANDLE(launch_handle)) {
+-            ALOGE("Failed to perform launch boost");
+-            return HINT_NONE;
+-        }
+-        launch_mode = 1;
+-    }
+-    return HINT_HANDLED;
+-}
+-
+ int power_hint_override(power_hint_t hint, void* data) {
+     int ret_val = HINT_NONE;
+     switch (hint) {
+@@ -221,13 +155,6 @@ int power_hint_override(power_hint_t hint, void* data) {
+         case POWER_HINT_VIDEO_DECODE:
+             ret_val = process_video_decode_hint(data);
+             break;
+-        case POWER_HINT_INTERACTION:
+-            process_interaction_hint(data);
+-            ret_val = HINT_HANDLED;
+-            break;
+-        case POWER_HINT_LAUNCH:
+-            ret_val = process_activity_launch_hint(data);
+-            break;
+         default:
+             break;
+     }

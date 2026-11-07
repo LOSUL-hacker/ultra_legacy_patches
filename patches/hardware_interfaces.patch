@@ -1,0 +1,132 @@
+diff --git a/audio/common/all-versions/default/service/Android.bp b/audio/common/all-versions/default/service/Android.bp
+index 9890be2954f8c5f613da794c001669721635d7fd..1bd6abeb4775fbefc4e5d030f725d6523afa89a3 100644
+--- a/audio/common/all-versions/default/service/Android.bp
++++ b/audio/common/all-versions/default/service/Android.bp
+@@ -52,7 +52,6 @@ cc_binary {
+     shared_libs: [
+         "libcutils",
+         "libbinder",
+-        "libbinder_ndk",
+         "libhidlbase",
+         "liblog",
+         "libutils",
+diff --git a/audio/common/all-versions/default/service/service.cpp b/audio/common/all-versions/default/service/service.cpp
+index fbf616563d38de522573dc40f05d23e31694396a..0b8a91525a2d5dcdc37f65a7d605753f501f294d 100644
+--- a/audio/common/all-versions/default/service/service.cpp
++++ b/audio/common/all-versions/default/service/service.cpp
+@@ -20,10 +20,8 @@
+ #include <string>
+ #include <vector>
+ 
+-#include <android/binder_process.h>
+ #include <binder/ProcessState.h>
+ #include <cutils/properties.h>
+-#include <dlfcn.h>
+ #include <hidl/HidlTransportSupport.h>
+ #include <hidl/LegacySupport.h>
+ #include <hwbinder/ProcessState.h>
+@@ -47,31 +45,6 @@ static bool registerPassthroughServiceImplementations(Iter first, Iter last) {
+     return false;
+ }
+ 
+-static bool registerExternalServiceImplementation(const std::string& libName,
+-                                                  const std::string& funcName) {
+-    constexpr int dlMode = RTLD_LAZY;
+-    void* handle = nullptr;
+-    dlerror();  // clear
+-    auto libPath = libName + ".so";
+-    handle = dlopen(libPath.c_str(), dlMode);
+-    if (handle == nullptr) {
+-        const char* error = dlerror();
+-        ALOGE("Failed to dlopen %s: %s", libPath.c_str(),
+-              error != nullptr ? error : "unknown error");
+-        return false;
+-    }
+-    binder_status_t (*factoryFunction)();
+-    *(void**)(&factoryFunction) = dlsym(handle, funcName.c_str());
+-    if (!factoryFunction) {
+-        const char* error = dlerror();
+-        ALOGE("Factory function %s not found in libName %s: %s", funcName.c_str(), libPath.c_str(),
+-              error != nullptr ? error : "unknown error");
+-        dlclose(handle);
+-        return false;
+-    }
+-    return ((*factoryFunction)() == STATUS_OK);
+-}
+-
+ int main(int /* argc */, char* /* argv */ []) {
+     signal(SIGPIPE, SIG_IGN);
+ 
+@@ -79,9 +52,6 @@ int main(int /* argc */, char* /* argv */ []) {
+     // start a threadpool for vndbinder interactions
+     ::android::ProcessState::self()->startThreadPool();
+ 
+-    ABinderProcess_setThreadPoolMaxThreadCount(1);
+-    ABinderProcess_startThreadPool();
+-
+     const int32_t defaultValue = -1;
+     int32_t value =
+         property_get_int32("persist.vendor.audio.service.hwbinder.size_kbyte", defaultValue);
+@@ -101,6 +71,7 @@ int main(int /* argc */, char* /* argv */ []) {
+             "android.hardware.audio@6.0::IDevicesFactory",
+             "android.hardware.audio@5.0::IDevicesFactory",
+             "android.hardware.audio@4.0::IDevicesFactory",
++            "android.hardware.audio@2.0::IDevicesFactory"
+         },
+         {
+             "Audio Effect API",
+@@ -108,6 +79,7 @@ int main(int /* argc */, char* /* argv */ []) {
+             "android.hardware.audio.effect@6.0::IEffectsFactory",
+             "android.hardware.audio.effect@5.0::IEffectsFactory",
+             "android.hardware.audio.effect@4.0::IEffectsFactory",
++            "android.hardware.audio.effect@2.0::IEffectsFactory",
+         }
+     };
+ 
+@@ -131,13 +103,6 @@ int main(int /* argc */, char* /* argv */ []) {
+             "android.hardware.bluetooth.a2dp@1.0::IBluetoothAudioOffload"
+         }
+     };
+-
+-    const std::vector<std::pair<std::string,std::string>> optionalInterfaceSharedLibs = {
+-        {
+-            "android.hardware.bluetooth.audio-impl",
+-            "createIBluetoothAudioProviderFactory",
+-        },
+-    };
+     // clang-format on
+ 
+     for (const auto& listIter : mandatoryInterfaces) {
+@@ -154,15 +119,5 @@ int main(int /* argc */, char* /* argv */ []) {
+                  "Could not register %s", interfaceFamilyName.c_str());
+     }
+ 
+-    for (const auto& interfacePair : optionalInterfaceSharedLibs) {
+-        const std::string& libraryName = interfacePair.first;
+-        const std::string& interfaceLoaderFuncName = interfacePair.second;
+-        if (registerExternalServiceImplementation(libraryName, interfaceLoaderFuncName)) {
+-            ALOGI("%s() from %s success", interfaceLoaderFuncName.c_str(), libraryName.c_str());
+-        } else {
+-            ALOGW("%s() from %s failed", interfaceLoaderFuncName.c_str(), libraryName.c_str());
+-        }
+-    }
+-
+     joinRpcThreadpool();
+ }
+diff --git a/graphics/composer/2.1/utils/command-buffer/include/composer-command-buffer/2.1/ComposerCommandBuffer.h b/graphics/composer/2.1/utils/command-buffer/include/composer-command-buffer/2.1/ComposerCommandBuffer.h
+index 499d3b96e32cc740ca54657515da9cb5d67ffa21..489578468ffe97eaa075beb9655e7e9ead9ed213 100644
+--- a/graphics/composer/2.1/utils/command-buffer/include/composer-command-buffer/2.1/ComposerCommandBuffer.h
++++ b/graphics/composer/2.1/utils/command-buffer/include/composer-command-buffer/2.1/ComposerCommandBuffer.h
+@@ -402,6 +402,12 @@ class CommandWriterBase {
+         endCommand();
+     }
+ 
++    void vendor800_1(uint32_t val) {
++        beginCommand(0x800 << 16, 1);
++        write(val);
++        endCommand();
++    }
++
+    protected:
+      template <typename T>
+      void beginCommand(T command, uint16_t length) {

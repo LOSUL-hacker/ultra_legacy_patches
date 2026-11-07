@@ -1,0 +1,50 @@
+## build/soong  (LineageOS-UL/android_build_soong)  1 file changed, 9 insertions(+), 2 deletions(-)
+   2023-06-21 Khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## bionic  (LOSUL-hacker/android_bionic)  9 files changed, 619 insertions(+), 54 deletions(-)
+   2023-06-21 Khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## device/lineage/sepolicy  (LineageOS-UL/android_device_lineage_sepolicy)  4 files changed, 24 insertions(+), 1 deletion(-)
+   2023-11-08 khalvat-M | Revert "qcom: Drop support for ultra legacy platforms"
+   2023-06-21 Khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## frameworks/av  (LOSUL-hacker/android_frameworks_av)  161 files changed, 10658 insertions(+), 15334 deletions(-)
+   2025-07-06 Anirudh Menon | Merge remote-tracking branch 'github/lineage-20.0' into lineage-20.0
+## frameworks/base  (LOSUL-hacker/android_frameworks_base)  82 files changed, 14074 insertions(+), 1645 deletions(-)
+   2025-04-04 khalvat-M | Merge remote-tracking branch 'github/lineage-20.0' into lineage-20.0
+## frameworks/native  (LOSUL-hacker/android_frameworks_native)  16 files changed, 111 insertions(+), 32 deletions(-)
+   2025-04-04 khalvat-M | Merge remote-tracking branch 'github/lineage-20.0' into lineage-20.0
+## frameworks/opt/telephony  (LOSUL-hacker/android_frameworks_opt_telephony)  17 files changed, 786 insertions(+), 67 deletions(-)
+   2024-09-21 Khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## hardware/interfaces  (LineageOS-UL/android_hardware_interfaces)  3 files changed, 8 insertions(+), 48 deletions(-)
+   2024-02-24 khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## hardware/lineage/interfaces  (LineageOS-UL/android_hardware_lineage_interfaces)  7 files changed, 103 insertions(+), 39 deletions(-)
+   2023-06-21 Khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## hardware/qcom/audio  (LineageOS-UL/android_hardware_qcom_audio)  2 files changed, 9 insertions(+), 2 deletions(-)
+   2022-11-22 D. Andrei Măceș | audio: Make CVD version retrieval nonfatal with ACDB v1
+   2022-11-22 Chirayu Desai | Revert "msm8x74: remove from top level makefile"
+## hardware/qcom-caf/wlan  (LineageOS-UL/android_hardware_qcom_wlan)  1 file changed, 2 insertions(+), 2 deletions(-)
+   2023-07-14 khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0-caf' into lineage-20.0-caf
+## packages/apps/Nfc  (LOSUL-hacker/android_packages_apps_Nfc)  20 files changed, 7925 insertions(+)
+   2024-01-13 khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## packages/inputmethods/LatinIME  (LineageOS-UL/android_packages_inputmethods_LatinIME)  4 files changed, 25 insertions(+), 2 deletions(-)
+   2024-02-24 khalvat-M | Merge remote-tracking branch 'github/lineage-20.0' into lineage-20.0
+## packages/modules/adb  (LOSUL-hacker/android_packages_modules_adb)  8 files changed, 688 insertions(+), 6 deletions(-)
+   2023-06-21 Khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## packages/modules/Bluetooth  (LOSUL-hacker/android_packages_modules_Bluetooth)  1 file changed, 12 insertions(+), 2 deletions(-)
+   2025-04-18 Kevin F. Haggerty | Merge tag 'android-security-13.0.0_r28' into staging/lineage-20.0_android-security-13.0.0_r28
+   2025-04-04 khalvat-M | Merge remote-tracking branch 'github/lineage-20.0' into lineage-20.0
+## packages/modules/Connectivity  (LOSUL-hacker/android_packages_modules_Connectivity)  4 files changed, 106 insertions(+), 7 deletions(-)
+   2023-06-21 Khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## packages/modules/Wifi  (LOSUL-hacker/android_packages_modules_Wifi)  1 file changed, 13 insertions(+), 13 deletions(-)
+   2025-07-06 Anirudh Menon | Merge remote-tracking branch 'github/lineage-20.0' into lineage-20.0
+## system/core  (LineageOS-UL/android_system_core)  7 files changed, 119 insertions(+), 32 deletions(-)
+   2024-02-24 khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## system/netd  (LineageOS-UL/android_system_netd)  5 files changed, 29 insertions(+), 2 deletions(-)
+   2023-06-21 Pierre-Hugues Husson | Don't abort in case of cgroup/bpf setup fail, since some devices dont have BPF
+   2023-06-21 ChonDoit | Support no-bpf usecase
+   2023-06-21 Lukas0610 | netd: Allow devices to force-add directly-connected routes
+## system/sepolicy  (LineageOS-UL/android_system_sepolicy)  34 files changed, 58 insertions(+)
+   2023-10-23 Abhishek Pandit-Subedi | Add sysprop for LeGetVendorCapabilities
+   2023-06-20 Khalvat-M | Merge remote-tracking branch 'LineageOS/lineage-20.0' into lineage-20.0
+## vendor/lineage  (LOSUL-hacker/android_vendor_lineage)  5 files changed, 253 insertions(+), 4 deletions(-)
+   2025-04-04 khalvat-M | Merge remote-tracking branch 'github/lineage-20.0' into lineage-20.0
+## vendor/qcom/opensource/power  (LineageOS-UL/android_vendor_qcom_opensource_power)  7 files changed, 439 deletions(-)
+   2023-11-03 khalvat-M | power-UL:Move launch and interaction hint handlers to common

@@ -1,0 +1,421 @@
+diff --git a/build/core/vendor/qcom_boards.mk b/build/core/vendor/qcom_boards.mk
+index 33b6ecb5c6cc0a036272ce097439f973b64b0423..fed5f33f76580b16444e7885434a2096141c431a 100644
+--- a/build/core/vendor/qcom_boards.mk
++++ b/build/core/vendor/qcom_boards.mk
+@@ -15,6 +15,30 @@ TARO := taro #SM8450
+ PARROT := parrot #SM6450
+ KALAMA := kalama #SM8550
+ 
++# A Family
++QCOM_BOARD_PLATFORMS += msm7x27a
++QCOM_BOARD_PLATFORMS += msm7x30
++QCOM_BOARD_PLATFORMS += msm8660
++
++QCOM_BOARD_PLATFORMS += msm8960
++
++# B Family
++QCOM_BOARD_PLATFORMS += msm8226
++QCOM_BOARD_PLATFORMS += msm8610
++QCOM_BOARD_PLATFORMS += msm8974
++
++QCOM_BOARD_PLATFORMS += apq8084
++
++# B64 Family
++QCOM_BOARD_PLATFORMS += msm8992
++QCOM_BOARD_PLATFORMS += msm8994
++
++# BR Family
++QCOM_BOARD_PLATFORMS += msm8909
++QCOM_BOARD_PLATFORMS += msm8916
++
++QCOM_BOARD_PLATFORMS += msm8952
++
+ # UM Family
+ QCOM_BOARD_PLATFORMS += msm8937
+ QCOM_BOARD_PLATFORMS += msm8953
+diff --git a/build/soong/Android.bp b/build/soong/Android.bp
+index 2029d7ecbc6a686c7c4f6a3d419ee804709adf01..3436eeca89c1dab3078be11e1d3607cbee431b7b 100644
+--- a/build/soong/Android.bp
++++ b/build/soong/Android.bp
+@@ -88,6 +88,23 @@ camera_override_format_from_reserved {
+     },
+ }
+ 
++soong_config_module_type {
++    name: "disable_postrender_cleanup",
++    module_type: "cc_defaults",
++    config_namespace: "lineageGlobalVars",
++    bool_variables: ["disable_postrender_cleanup"],
++    properties: ["cppflags"],
++}
++
++disable_postrender_cleanup {
++    name: "disable_postrender_cleanup_defaults",
++    soong_config_variables: {
++        disable_postrender_cleanup: {
++            cppflags: ["-DDISABLE_POSTRENDER_CLEANUP"],
++        },
++    },
++}
++
+ soong_config_module_type {
+     name: "gralloc_10_usage_bits",
+     module_type: "cc_defaults",
+@@ -139,6 +156,23 @@ gralloc_handle_reserved_size {
+     },
+ }
+ 
++soong_config_module_type {
++    name: "target_process_sdk_version_overrides",
++    module_type: "cc_defaults",
++    config_namespace: "lineageGlobalVars",
++    value_variables: ["target_process_sdk_version_override"],
++    properties: ["cppflags"],
++}
++
++target_process_sdk_version_overrides {
++    name: "process_sdk_version_overrides_defaults",
++    soong_config_variables: {
++        target_process_sdk_version_override: {
++            cppflags: ["-DSDK_VERSION_OVERRIDES=\"%s\""],
++        },
++    },
++}
++
+ soong_config_module_type {
+     name: "target_shim_libs",
+     module_type: "cc_defaults",
+@@ -221,6 +255,108 @@ trust_usb_control {
+     },
+ }
+ 
++soong_config_module_type {
++    name: "needs_camera_boottime",
++    module_type: "cc_defaults",
++    config_namespace: "lineageGlobalVars",
++    bool_variables: ["needs_camera_boottime"],
++    properties: ["cppflags"],
++}
++
++needs_camera_boottime {
++    name: "needs_camera_boottime_defaults",
++    soong_config_variables: {
++        needs_camera_boottime: {
++            cppflags: ["-DTARGET_CAMERA_BOOTTIME_TIMESTAMP"],
++        },
++    },
++}
++
++soong_config_module_type {
++    name: "needs_netd_direct_connect_rule",
++    module_type: "cc_defaults",
++    config_namespace: "lineageGlobalVars",
++    bool_variables: ["needs_netd_direct_connect_rule"],
++    properties: ["cppflags"],
++}
++
++needs_netd_direct_connect_rule {
++    name: "needs_netd_direct_connect_rule_defaults",
++    soong_config_variables: {
++        needs_netd_direct_connect_rule: {
++            cppflags: ["-DNEEDS_NETD_DIRECT_CONNECT_RULE"],
++        },
++    },
++}
++
++soong_config_module_type {
++    name: "no_cameraserver",
++    module_type: "cc_defaults",
++    config_namespace: "lineageGlobalVars",
++    bool_variables: ["has_legacy_camera_hal1"],
++    properties: [
++        "cppflags",
++    ],
++}
++
++no_cameraserver {
++    name: "no_cameraserver_defaults",
++    soong_config_variables: {
++        has_legacy_camera_hal1: {
++            cppflags: [
++                "-DNO_CAMERA_SERVER",
++                "-Wno-overloaded-virtual",
++            ],
++        },
++    },
++}
++
++soong_config_module_type {
++    name: "camera_in_mediaserver",
++    module_type: "cc_defaults",
++    config_namespace: "lineageGlobalVars",
++    bool_variables: ["has_legacy_camera_hal1"],
++    properties: [
++        "overrides",
++        "shared_libs",
++    ],
++}
++
++camera_in_mediaserver {
++    name: "camera_in_mediaserver_defaults",
++    defaults: ["no_cameraserver_defaults"],
++    soong_config_variables: {
++        has_legacy_camera_hal1: {
++            overrides: ["cameraserver"],
++            shared_libs: [
++                "android.hardware.camera.common@1.0",
++                "android.hardware.camera.device@3.4",
++                "android.hardware.camera.provider@2.6",
++                "android.hardware.camera.provider@2.7",
++                "libcameraservice",
++                "libgui",
++            ],
++        },
++    },
++}
++
++soong_config_module_type {
++    name: "has_memfd_backport",
++    module_type: "cc_defaults",
++    config_namespace: "lineageGlobalVars",
++    bool_variables: ["has_memfd_backport"],
++    properties: ["cppflags"],
++}
++
++has_memfd_backport {
++    name: "has_memfd_backport_defaults",
++    soong_config_variables: {
++        has_memfd_backport: {
++            cppflags: ["-DHAS_MEMFD_BACKPORT"],
++        },
++    },
++}
++
+ soong_config_module_type {
+     name: "bootloader_message_offset",
+     module_type: "cc_defaults",
+@@ -242,6 +378,23 @@ bootloader_message_offset {
+     },
+ }
+ 
++soong_config_module_type {
++    name: "camera_parameter_library",
++    module_type: "cc_defaults",
++    config_namespace: "lineageGlobalVars",
++    value_variables: ["uses_camera_parameter_lib"],
++    properties: ["whole_static_libs"],
++}
++
++camera_parameter_library {
++    name: "camera_parameter_library_defaults",
++    soong_config_variables: {
++        uses_camera_parameter_lib: {
++            whole_static_libs: ["%s"],
++        },
++    },
++}
++
+ soong_config_module_type {
+     name: "egl_display_array",
+     module_type: "cc_defaults",
+@@ -401,3 +554,20 @@ qti_vibrator_hal {
+         },
+     },
+ }
++
++soong_config_module_type {
++    name: "stagefright_qcom_legacy",
++    module_type: "cc_defaults",
++    config_namespace: "lineageQcomVars",
++    bool_variables: ["uses_qcom_bsp_legacy"],
++    properties: ["cppflags"],
++}
++
++stagefright_qcom_legacy {
++    name: "stagefright_qcom_legacy_defaults",
++    soong_config_variables: {
++        uses_qcom_bsp_legacy: {
++            cppflags: ["-DQCOM_BSP_LEGACY"],
++        },
++    },
++}
+diff --git a/build/tasks/kernel.mk b/build/tasks/kernel.mk
+index 2fd6ec5fb0e7bb4d6116786c77892796f8a69586..53b91587aebe9a4377689020639720a55ded5a7e 100644
+--- a/build/tasks/kernel.mk
++++ b/build/tasks/kernel.mk
+@@ -439,8 +439,14 @@ KERNEL_RECOVERY_MODULES_OUT := $(TARGET_RECOVERY_ROOT_OUT)
+ $(recovery_uncompressed_ramdisk): $(TARGET_PREBUILT_INT_KERNEL)
+ endif
+ 
++ifdef BOARD_CUSTOM_KERNEL_MK
++include $(BOARD_CUSTOM_KERNEL_MK)
++endif
++
++ifndef BOARD_CUSTOM_KERNEL_MK
+ $(KERNEL_OUT):
+ 	mkdir -p $(KERNEL_OUT)
++endif
+ 
+ $(KERNEL_CONFIG): $(KERNEL_OUT) $(ALL_KERNEL_DEFCONFIG_SRCS)
+ 	@echo "Building Kernel Config"
+diff --git a/config/BoardConfigQcom.mk b/config/BoardConfigQcom.mk
+index 79e10ca97ce9907e2beebae26bd1b8a222b785b1..3b67eb3f1a44f45006389daeb12ad84267017a9d 100644
+--- a/config/BoardConfigQcom.mk
++++ b/config/BoardConfigQcom.mk
+@@ -12,6 +12,9 @@ TARO := taro #SM8450
+ PARROT := parrot #SM6450
+ KALAMA := kalama #SM8550
+ 
++B_FAMILY := msm8226 msm8610 msm8974
++B64_FAMILY := msm8992 msm8994
++BR_FAMILY := msm8909 msm8916
+ UM_3_18_FAMILY := msm8996
+ UM_4_4_FAMILY := msm8998
+ UM_4_9_FAMILY := sdm845 sdm710
+@@ -99,17 +102,32 @@ SOONG_CONFIG_rmnetctl += \
+ # Set default values for rmnetctl config
+ SOONG_CONFIG_rmnetctl_old_rmnet_data ?= false
+ 
++# UM platforms no longer need this set on O+
++ifneq ($(filter $(B_FAMILY) $(B64_FAMILY) $(BR_FAMILY),$(TARGET_BOARD_PLATFORM)),)
++    TARGET_USES_QCOM_BSP := true
++endif
++
+ # Tell HALs that we're compiling an AOSP build with an in-line kernel
+ TARGET_COMPILE_WITH_MSM_KERNEL := true
+ 
++ifneq ($(filter msm7x27a msm7x30 msm8660 msm8960,$(TARGET_BOARD_PLATFORM)),)
++    TARGET_USES_QCOM_BSP_LEGACY := true
++    # Enable legacy audio functions
++    ifeq ($(BOARD_USES_LEGACY_ALSA_AUDIO),true)
++        USE_CUSTOM_AUDIO_POLICY := 1
++    endif
++endif
++
+ # Enable media extensions
+ TARGET_USES_MEDIA_EXTENSIONS := true
+ 
+ # Allow building audio encoders
+ TARGET_USES_QCOM_MM_AUDIO := true
+ 
+-# Enable color metadata
+-TARGET_USES_COLOR_METADATA := true
++# Enable color metadata for every UM platform
++ifneq ($(filter $(UM_PLATFORMS),$(TARGET_BOARD_PLATFORM)),)
++    TARGET_USES_COLOR_METADATA := true
++endif
+ 
+ # Enable DRM PP driver on UM platforms that support it
+ ifneq ($(filter $(UM_4_9_FAMILY) $(UM_4_14_FAMILY) $(UM_4_19_FAMILY) $(UM_5_4_FAMILY) $(UM_5_10_FAMILY) $(UM_5_15_FAMILY),$(TARGET_BOARD_PLATFORM)),)
+@@ -134,6 +152,11 @@ endif
+ 
+ TARGET_ADDITIONAL_GRALLOC_10_USAGE_BITS ?= 0
+ 
++# Mark GRALLOC_USAGE_HW_2D as valid gralloc bit on legacy platforms that support it
++ifneq ($(filter msm8960 msm8952 $(B_FAMILY) $(B64_FAMILY) $(BR_FAMILY),$(TARGET_BOARD_PLATFORM)),)
++    TARGET_ADDITIONAL_GRALLOC_10_USAGE_BITS += | (1 << 10)
++endif
++
+ # Mark GRALLOC_USAGE_EXTERNAL_DISP as valid gralloc bit
+ TARGET_ADDITIONAL_GRALLOC_10_USAGE_BITS += | (1 << 13)
+ 
+@@ -159,7 +182,16 @@ ifneq ($(filter $(UM_5_10_FAMILY) $(UM_5_15_FAMILY),$(TARGET_BOARD_PLATFORM)),)
+     TARGET_GRALLOC_HANDLE_HAS_RESERVED_SIZE ?= true
+ endif
+ 
+-ifneq ($(filter $(UM_3_18_FAMILY),$(TARGET_BOARD_PLATFORM)),)
++ifneq ($(filter $(B_FAMILY),$(TARGET_BOARD_PLATFORM)),)
++    MSM_VIDC_TARGET_LIST := $(B_FAMILY)
++    QCOM_HARDWARE_VARIANT := msm8974
++else ifneq ($(filter $(B64_FAMILY),$(TARGET_BOARD_PLATFORM)),)
++    MSM_VIDC_TARGET_LIST := $(B64_FAMILY)
++    QCOM_HARDWARE_VARIANT := msm8994
++else ifneq ($(filter $(BR_FAMILY),$(TARGET_BOARD_PLATFORM)),)
++    MSM_VIDC_TARGET_LIST := $(BR_FAMILY)
++    QCOM_HARDWARE_VARIANT := msm8916
++else ifneq ($(filter $(UM_3_18_FAMILY),$(TARGET_BOARD_PLATFORM)),)
+     MSM_VIDC_TARGET_LIST := $(UM_3_18_FAMILY)
+     QCOM_HARDWARE_VARIANT := msm8996
+ else ifneq ($(filter $(UM_4_9_LEGACY_FAMILY),$(TARGET_BOARD_PLATFORM)),)
+diff --git a/config/BoardConfigSoong.mk b/config/BoardConfigSoong.mk
+index 651d33724bfc09a61022bbb4d6134817a8f90623..c8517b4eff82f6643c60ca2fc64ed09bddb399d2 100644
+--- a/config/BoardConfigSoong.mk
++++ b/config/BoardConfigSoong.mk
+@@ -32,8 +32,13 @@ SOONG_CONFIG_lineageGlobalVars += \
+     additional_gralloc_10_usage_bits \
+     bootloader_message_offset \
+     camera_override_format_from_reserved \
++    disable_postrender_cleanup \
+     gralloc_handle_has_custom_content_md_reserved_size \
+     gralloc_handle_has_reserved_size \
++    has_legacy_camera_hal1 \
++    has_memfd_backport \
++    needs_camera_boottime \
++    needs_netd_direct_connect_rule \
+     target_health_charging_control_charging_path \
+     target_health_charging_control_charging_enabled \
+     target_health_charging_control_charging_disabled \
+@@ -43,10 +48,12 @@ SOONG_CONFIG_lineageGlobalVars += \
+     target_health_charging_control_supports_toggle \
+     target_init_vendor_lib \
+     target_ld_shim_libs \
++    target_process_sdk_version_override \
+     target_surfaceflinger_udfps_lib \
+     target_trust_usb_control_path \
+     target_trust_usb_control_enable \
+     target_trust_usb_control_disable \
++    uses_camera_parameter_lib \
+     uses_egl_display_array
+ 
+ SOONG_CONFIG_NAMESPACES += lineageNvidiaVars
+@@ -58,7 +65,8 @@ SOONG_CONFIG_lineageQcomVars += \
+     qti_vibrator_effect_lib \
+     qti_vibrator_use_effect_stream \
+     supports_extended_compress_format \
+-    uses_pre_uplink_features_netmgrd
++    uses_pre_uplink_features_netmgrd \
++    uses_qcom_bsp_legacy
+ 
+ # Only create display_headers_namespace var if dealing with UM platforms to avoid breaking build for all other platforms
+ ifneq ($(filter $(UM_PLATFORMS),$(TARGET_BOARD_PLATFORM)),)
+@@ -68,13 +76,19 @@ endif
+ 
+ # Soong bool variables
+ SOONG_CONFIG_lineageGlobalVars_camera_override_format_from_reserved := $(TARGET_CAMERA_OVERRIDE_FORMAT_FROM_RESERVED)
++SOONG_CONFIG_lineageGlobalVars_disable_postrender_cleanup := $(TARGET_DISABLE_POSTRENDER_CLEANUP)
+ SOONG_CONFIG_lineageGlobalVars_gralloc_handle_has_custom_content_md_reserved_size := $(TARGET_GRALLOC_HANDLE_HAS_CUSTOM_CONTENT_MD_RESERVED_SIZE)
+ SOONG_CONFIG_lineageGlobalVars_gralloc_handle_has_reserved_size := $(TARGET_GRALLOC_HANDLE_HAS_RESERVED_SIZE)
++SOONG_CONFIG_lineageGlobalVars_has_legacy_camera_hal1 := $(TARGET_HAS_LEGACY_CAMERA_HAL1)
++SOONG_CONFIG_lineageGlobalVars_has_memfd_backport := $(TARGET_HAS_MEMFD_BACKPORT)
++SOONG_CONFIG_lineageGlobalVars_needs_camera_boottime := $(TARGET_CAMERA_BOOTTIME_TIMESTAMP)
++SOONG_CONFIG_lineageGlobalVars_needs_netd_direct_connect_rule := $(TARGET_NEEDS_NETD_DIRECT_CONNECT_RULE)
+ SOONG_CONFIG_lineageGlobalVars_uses_egl_display_array := $(TARGET_USES_EGL_DISPLAY_ARRAY)
+ SOONG_CONFIG_lineageNvidiaVars_uses_nvidia_enhancements := $(NV_ANDROID_FRAMEWORK_ENHANCEMENTS)
+ SOONG_CONFIG_lineageQcomVars_qti_vibrator_use_effect_stream := $(TARGET_QTI_VIBRATOR_USE_EFFECT_STREAM)
+ SOONG_CONFIG_lineageQcomVars_supports_extended_compress_format := $(AUDIO_FEATURE_ENABLED_EXTENDED_COMPRESS_FORMAT)
+ SOONG_CONFIG_lineageQcomVars_uses_pre_uplink_features_netmgrd := $(TARGET_USES_PRE_UPLINK_FEATURES_NETMGRD)
++SOONG_CONFIG_lineageQcomVars_uses_qcom_bsp_legacy := $(TARGET_USES_QCOM_BSP_LEGACY)
+ 
+ # Set default values
+ BOOTLOADER_MESSAGE_OFFSET ?= 0
+@@ -88,6 +102,7 @@ TARGET_HEALTH_CHARGING_CONTROL_SUPPORTS_BYPASS ?= true
+ TARGET_HEALTH_CHARGING_CONTROL_SUPPORTS_DEADLINE ?= false
+ TARGET_HEALTH_CHARGING_CONTROL_SUPPORTS_TOGGLE ?= true
+ TARGET_INIT_VENDOR_LIB ?= vendor_init
++TARGET_SPECIFIC_CAMERA_PARAMETER_LIBRARY ?= libcamera_parameters
+ TARGET_QTI_VIBRATOR_EFFECT_LIB ?= libqtivibratoreffect
+ TARGET_SURFACEFLINGER_UDFPS_LIB ?= surfaceflinger_udfps_lib
+ TARGET_TRUST_USB_CONTROL_PATH ?= /proc/sys/kernel/deny_new_usb
+@@ -107,10 +122,12 @@ SOONG_CONFIG_lineageGlobalVars_target_health_charging_control_supports_deadline
+ SOONG_CONFIG_lineageGlobalVars_target_health_charging_control_supports_toggle := $(TARGET_HEALTH_CHARGING_CONTROL_SUPPORTS_TOGGLE)
+ SOONG_CONFIG_lineageGlobalVars_target_init_vendor_lib := $(TARGET_INIT_VENDOR_LIB)
+ SOONG_CONFIG_lineageGlobalVars_target_ld_shim_libs := $(subst $(space),:,$(TARGET_LD_SHIM_LIBS))
++SOONG_CONFIG_lineageGlobalVars_target_process_sdk_version_override := $(TARGET_PROCESS_SDK_VERSION_OVERRIDE)
+ SOONG_CONFIG_lineageGlobalVars_target_surfaceflinger_udfps_lib := $(TARGET_SURFACEFLINGER_UDFPS_LIB)
+ SOONG_CONFIG_lineageGlobalVars_target_trust_usb_control_path := $(TARGET_TRUST_USB_CONTROL_PATH)
+ SOONG_CONFIG_lineageGlobalVars_target_trust_usb_control_enable := $(TARGET_TRUST_USB_CONTROL_ENABLE)
+ SOONG_CONFIG_lineageGlobalVars_target_trust_usb_control_disable := $(TARGET_TRUST_USB_CONTROL_DISABLE)
++SOONG_CONFIG_lineageGlobalVars_uses_camera_parameter_lib := $(TARGET_SPECIFIC_CAMERA_PARAMETER_LIBRARY)
+ ifneq ($(filter $(QSSI_SUPPORTED_PLATFORMS),$(TARGET_BOARD_PLATFORM)),)
+ SOONG_CONFIG_lineageQcomVars_qcom_display_headers_namespace := vendor/qcom/opensource/commonsys-intf/display
+ else

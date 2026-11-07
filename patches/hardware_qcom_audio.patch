@@ -1,0 +1,39 @@
+diff --git a/Android.mk b/Android.mk
+index 826a88d501a88781f740fefc02b660cf8d1e6adf..26d26fe8aa060b9efa7e6290b0c8e2dcfa59e372 100644
+--- a/Android.mk
++++ b/Android.mk
+@@ -1,6 +1,6 @@
+ # TODO:  Find a better way to separate build configs for ADP vs non-ADP devices
+ ifneq ($(TARGET_BOARD_AUTO),true)
+-  ifneq ($(filter msm8960 msm8226 msm8x26 msm8x84 msm8084 msm8992 msm8994 msm8996 msm8909 msm8952 msm8998 sdm845 sdm710,$(TARGET_BOARD_PLATFORM)),)
++  ifneq ($(filter msm8960 msm8226 msm8x26 msm8974 msm8x74 msm8x84 msm8084 msm8992 msm8994 msm8996 msm8909 msm8952 msm8998 sdm845 sdm710,$(TARGET_BOARD_PLATFORM)),)
+ 
+     MY_LOCAL_PATH := $(call my-dir)
+ 
+diff --git a/hal/acdb.c b/hal/acdb.c
+index 58f219a8694cbeaa79cafa7c254ec5512c85b1bc..0c008e1924b53d9e420d060023af0616b89a44fa 100644
+--- a/hal/acdb.c
++++ b/hal/acdb.c
+@@ -99,7 +99,13 @@ int acdb_init(int snd_card_num)
+         ctl = mixer_get_ctl_by_name(mixer, CVD_VERSION_MIXER_CTL);
+         if (!ctl) {
+             ALOGE("%s: Could not get ctl for mixer cmd - %s",  __func__, CVD_VERSION_MIXER_CTL);
+-            goto cleanup;
++            /* CVD is required for ACDB v2/3, so fail fully there.
++             * For ACDB v1, the CVD version code can be skipped.
++             */
++            if (my_data->acdb_init_v2 || my_data->acdb_init_v3)
++                goto cleanup;
++            else
++                goto card_name;
+         }
+         mixer_ctl_update(ctl);
+ 
+@@ -114,6 +120,7 @@ int acdb_init(int snd_card_num)
+         }
+     }
+ 
++card_name:
+     /* Get Sound card name */
+     snd_card_name = strdup(mixer_get_name(mixer));
+     if (!snd_card_name) {

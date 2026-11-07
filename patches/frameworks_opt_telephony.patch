@@ -1,0 +1,1305 @@
+diff --git a/src/java/com/android/internal/telephony/BaseCommands.java b/src/java/com/android/internal/telephony/BaseCommands.java
+index 972884a77be7391e4864f3f0bcae41df9ff124b0..13dfe2c2e181fba7377e4232ca9e75c9538a78ae 100644
+--- a/src/java/com/android/internal/telephony/BaseCommands.java
++++ b/src/java/com/android/internal/telephony/BaseCommands.java
+@@ -958,8 +958,7 @@ public abstract class BaseCommands implements CommandsInterface {
+         return mRilVersion;
+     }
+ 
+-    public void setUiccSubscription(int slotId, int appIndex, int subId, int subStatus,
+-            Message response) {
++    public void setUiccSubscription(int appIndex, boolean activate, Message response) {
+     }
+ 
+     public void setDataAllowed(boolean allowed, Message response) {
+diff --git a/src/java/com/android/internal/telephony/CommandsInterface.java b/src/java/com/android/internal/telephony/CommandsInterface.java
+index 27cedfeeb9cee59b6f39db6f56a9f978c1e50b9a..f96be102d285b3e75e69bf60d05cbb3a1ccf325f 100644
+--- a/src/java/com/android/internal/telephony/CommandsInterface.java
++++ b/src/java/com/android/internal/telephony/CommandsInterface.java
+@@ -2194,21 +2194,16 @@ public interface CommandsInterface {
+    /**
+      * Sets user selected subscription at Modem.
+      *
+-     * @param slotId
+-     *          Slot.
+      * @param appIndex
+      *          Application index in the card.
+-     * @param subId
+-     *          Indicates subscription 0 or subscription 1.
+-     * @param subStatus
+-     *          Activation status, 1 = activate and 0 = deactivate.
++     * @param activate
++     *          Whether to activate or deactivate the subscription.
+      * @param result
+      *          Callback message contains the information of SUCCESS/FAILURE.
+      */
+     // FIXME Update the doc and consider modifying the request to make more generic.
+     @UnsupportedAppUsage
+-    public void setUiccSubscription(int slotId, int appIndex, int subId, int subStatus,
+-            Message result);
++    public void setUiccSubscription(int appIndex, boolean activate, Message result);
+ 
+     /**
+      * Whether the device modem supports reporting the EID in either the slot or card status or
+diff --git a/src/java/com/android/internal/telephony/GsmCdmaPhone.java b/src/java/com/android/internal/telephony/GsmCdmaPhone.java
+index e865f1829db42c20f86b7494a74f2cc59cab2be8..2ef7e217a93b503339a6d809a4993c3d26777ea8 100644
+--- a/src/java/com/android/internal/telephony/GsmCdmaPhone.java
++++ b/src/java/com/android/internal/telephony/GsmCdmaPhone.java
+@@ -530,8 +530,6 @@ public class GsmCdmaPhone extends Phone {
+                 logd("update icc_operator_numeric=" + operatorNumeric);
+                 tm.setSimOperatorNumericForPhone(mPhoneId, operatorNumeric);
+ 
+-                SubscriptionController.getInstance().setMccMnc(operatorNumeric, getSubId());
+-
+                 // Sets iso country property by retrieving from build-time system property
+                 String iso = "";
+                 try {
+@@ -542,7 +540,14 @@ public class GsmCdmaPhone extends Phone {
+ 
+                 logd("init: set 'gsm.sim.operator.iso-country' to iso=" + iso);
+                 tm.setSimCountryIsoForPhone(mPhoneId, iso);
+-                SubscriptionController.getInstance().setCountryIso(iso, getSubId());
++
++                // Skip if the subscription ID is not valid, because it can happen
++                // that the SIM is not loaded yet at this point.
++                final int subId = getSubId();
++                if (subId != SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
++                    SubscriptionController.getInstance().setMccMnc(operatorNumeric, subId);
++                    SubscriptionController.getInstance().setCountryIso(iso, subId);
++                }
+ 
+                 // Updates MCC MNC device configuration information
+                 logd("update mccmnc=" + operatorNumeric);
+diff --git a/src/java/com/android/internal/telephony/OemHookIndication.java b/src/java/com/android/internal/telephony/OemHookIndication.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..b715a1b58b998ca934dc536e31e8959c80bee4a8
+--- /dev/null
++++ b/src/java/com/android/internal/telephony/OemHookIndication.java
+@@ -0,0 +1,53 @@
++/**
++ * Copyright (C) 2017 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.internal.telephony;
++
++import android.hardware.radio.deprecated.V1_0.IOemHookIndication;
++import android.os.AsyncResult;
++
++import java.util.ArrayList;
++
++import static com.android.internal.telephony.RILConstants.RIL_UNSOL_OEM_HOOK_RAW;
++
++/**
++ * Class containing oem hook indication callbacks
++ */
++public class OemHookIndication extends IOemHookIndication.Stub {
++    RIL mRil;
++
++    public OemHookIndication(RIL ril) {
++        mRil = ril;
++    }
++
++    /**
++     * @param indicationType RadioIndicationType
++     * @param data Data sent by oem
++     */
++    public void oemHookRaw(int indicationType, ArrayList<Byte> data) {
++        mRil.processIndication(0, indicationType);
++
++        byte[] response = RIL.arrayListToPrimitiveArray(data);
++        if (RIL.RILJ_LOGD) {
++            mRil.unsljLogvRet(RIL_UNSOL_OEM_HOOK_RAW,
++                    com.android.internal.telephony.uicc.IccUtils.bytesToHexString(response));
++        }
++
++        if (mRil.mUnsolOemHookRawRegistrant != null) {
++            mRil.mUnsolOemHookRawRegistrant.notifyRegistrant(new AsyncResult(null, response, null));
++        }
++    }
++}
+diff --git a/src/java/com/android/internal/telephony/OemHookResponse.java b/src/java/com/android/internal/telephony/OemHookResponse.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..0afeac8d397e74409cbeb67371eaa9cd99d17586
+--- /dev/null
++++ b/src/java/com/android/internal/telephony/OemHookResponse.java
+@@ -0,0 +1,59 @@
++/**
++ * Copyright (C) 2017 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.internal.telephony;
++
++import android.hardware.radio.deprecated.V1_0.IOemHookResponse;
++import android.hardware.radio.V1_0.RadioError;
++import android.hardware.radio.V1_0.RadioResponseInfo;
++
++import java.util.ArrayList;
++
++/**
++ * Class containing oem hook response callbacks
++ */
++public class OemHookResponse extends IOemHookResponse.Stub {
++    RIL mRil;
++
++    public OemHookResponse(RIL ril) {
++        mRil = ril;
++    }
++
++    /**
++     * @param responseInfo Response info struct containing response type, serial no. and error
++     * @param data Data returned by oem
++     */
++    public void sendRequestRawResponse(RadioResponseInfo responseInfo, ArrayList<Byte> data) {
++        RILRequest rr = mRil.processResponse(responseInfo);
++
++        if (rr != null) {
++            byte[] ret = null;
++            if (responseInfo.error == RadioError.NONE) {
++                ret = RIL.arrayListToPrimitiveArray(data);
++                RadioResponse.sendMessageResponse(rr.mResult, ret);
++            }
++            mRil.processResponseDone(rr, responseInfo, ret);
++        }
++    }
++
++    /**
++     * @param responseInfo Response info struct containing response type, serial no. and error
++     * @param data Data returned by oem
++     */
++    public void sendRequestStringsResponse(RadioResponseInfo responseInfo, ArrayList<String> data) {
++        RadioResponse.responseStringArrayList(mRil, responseInfo, data);
++    }
++}
+diff --git a/src/java/com/android/internal/telephony/Phone.java b/src/java/com/android/internal/telephony/Phone.java
+index 4afccd106b415a12ea3cba0d854dec45f6fb51c5..bcf7846a2a39a92f3788680531419a5ea5e9ade5 100644
+--- a/src/java/com/android/internal/telephony/Phone.java
++++ b/src/java/com/android/internal/telephony/Phone.java
+@@ -16,12 +16,15 @@
+ 
+ package com.android.internal.telephony;
+ 
++import android.util.Log;
+ import android.annotation.NonNull;
+ import android.annotation.Nullable;
+ import android.app.BroadcastOptions;
+ import android.compat.annotation.UnsupportedAppUsage;
++import android.content.BroadcastReceiver;
+ import android.content.Context;
+ import android.content.Intent;
++import android.content.IntentFilter;
+ import android.content.SharedPreferences;
+ import android.content.res.Configuration;
+ import android.net.Uri;
+@@ -138,11 +141,39 @@ import java.util.stream.Collectors;
+ 
+ public abstract class Phone extends Handler implements PhoneInternalInterface {
+     private static final String LOG_TAG = "Phone";
++    private final boolean mIsDynamicBinding = SystemProperties.getBoolean("ro.ims.dynamic_bind",true);
+ 
+     protected final static Object lockForRadioTechnologyChange = new Object();
+ 
+     protected final int USSD_MAX_QUEUE = 10;
+ 
++    private BroadcastReceiver mImsIntentReceiver = new BroadcastReceiver() {
++        @Override
++        public void onReceive(Context context, Intent intent) {
++            Rlog.d(LOG_TAG, "mImsIntentReceiver: action " + intent.getAction());
++            if (intent.hasExtra(ImsManager.EXTRA_PHONE_ID)) {
++                int extraPhoneId = intent.getIntExtra(ImsManager.EXTRA_PHONE_ID,
++                        SubscriptionManager.INVALID_PHONE_INDEX);
++                Rlog.d(LOG_TAG, "mImsIntentReceiver: extraPhoneId = " + extraPhoneId);
++                if (extraPhoneId == SubscriptionManager.INVALID_PHONE_INDEX ||
++                        extraPhoneId != getPhoneId()) {
++                    return;
++                }
++            }
++
++            synchronized (Phone.lockForRadioTechnologyChange) {
++                if (intent.getAction().equals(ImsManager.ACTION_IMS_SERVICE_UP)) {
++                    mImsServiceReady = true;
++                    updateImsPhone();
++                    ImsManager.getInstance(mContext, mPhoneId).updateImsServiceConfig();
++                } else if (intent.getAction().equals(ImsManager.ACTION_IMS_SERVICE_DOWN)) {
++                    mImsServiceReady = false;
++                    updateImsPhone();
++                }
++            }
++        }
++    };
++
+     // Key used to read and write the saved network selection numeric value
+     public static final String NETWORK_SELECTION_KEY = "network_selection_key";
+     // Key used to read and write the saved network selection operator name
+@@ -357,6 +388,8 @@ public abstract class Phone extends Handler implements PhoneInternalInterface {
+     protected int mPhoneId;
+ 
+     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.R, trackingBug = 170729553)
++    private boolean mImsServiceReady = false;
++    @UnsupportedAppUsage
+     protected Phone mImsPhone = null;
+ 
+     private final AtomicReference<RadioCapability> mRadioCapability =
+@@ -645,20 +678,34 @@ public abstract class Phone extends Handler implements PhoneInternalInterface {
+     }
+ 
+     /**
+-     * Start setup of ImsPhone, which will start trying to connect to the ImsResolver. Will not be
+-     * called if this device does not support FEATURE_IMS_TELEPHONY.
++     * Start listening for IMS service UP/DOWN events. If using the new ImsResolver APIs, we should
++     * always be setting up ImsPhones.
+      */
+-    public void createImsPhone() {
++    public void startMonitoringImsService() {
+         if (getPhoneType() == PhoneConstants.PHONE_TYPE_SIP) {
+             return;
+         }
+ 
+         synchronized(Phone.lockForRadioTechnologyChange) {
+-            if (mImsPhone == null) {
+-                mImsPhone = PhoneFactory.makeImsPhone(mNotifier, this);
+-                CallManager.getInstance().registerPhone(mImsPhone);
+-                mImsPhone.registerForSilentRedial(
+-                        this, EVENT_INITIATE_SILENT_REDIAL, null);
++            IntentFilter filter = new IntentFilter();
++            ImsManager imsManager = ImsManager.getInstance(mContext, getPhoneId());
++            // Don't listen to deprecated intents using the new dynamic binding.
++            if (imsManager != null && !mIsDynamicBinding) {
++                filter.addAction(ImsManager.ACTION_IMS_SERVICE_UP);
++                filter.addAction(ImsManager.ACTION_IMS_SERVICE_DOWN);
++                mContext.registerReceiver(mImsIntentReceiver, filter);
++            }
++
++            // Monitor IMS service - but first poll to see if already up (could miss
++            // intent). Also, when using new ImsResolver APIs, the service will be available soon,
++            // so start trying to bind.
++            if (imsManager != null) {
++                // If it is dynamic binding, kick off ImsPhone creation now instead of waiting for
++                // the service to be available.
++                if (mIsDynamicBinding || imsManager.isServiceAvailable()) {
++                    mImsServiceReady = true;
++                    updateImsPhone();
++                }
+             }
+         }
+     }
+@@ -4089,6 +4136,28 @@ public abstract class Phone extends Handler implements PhoneInternalInterface {
+     public void dispose() {
+     }
+ 
++    private void updateImsPhone() {
++        Rlog.d(LOG_TAG, "updateImsPhone"
++                + " mImsServiceReady=" + mImsServiceReady);
++
++        if (mImsServiceReady && (mImsPhone == null)) {
++            mImsPhone = PhoneFactory.makeImsPhone(mNotifier, this);
++            CallManager.getInstance().registerPhone(mImsPhone);
++            mImsPhone.registerForSilentRedial(
++                    this, EVENT_INITIATE_SILENT_REDIAL, null);
++        } else if (!mImsServiceReady && (mImsPhone != null)) {
++            CallManager.getInstance().unregisterPhone(mImsPhone);
++            mImsPhone.unregisterForSilentRedial(this);
++
++            mImsPhone.dispose();
++            // Potential GC issue if someone keeps a reference to ImsPhone.
++            // However: this change will make sure that such a reference does
++            // not access functions through NULL pointer.
++            //mImsPhone.removeReferences();
++            mImsPhone = null;
++        }
++    }
++
+     /**
+      * Dials a number.
+      *
+diff --git a/src/java/com/android/internal/telephony/PhoneFactory.java b/src/java/com/android/internal/telephony/PhoneFactory.java
+index 3361b74710de8a7d2fe21eb272f804a868a152a5..a29be5044aef51a1da4950b755c2ff18cc98ce3a 100644
+--- a/src/java/com/android/internal/telephony/PhoneFactory.java
++++ b/src/java/com/android/internal/telephony/PhoneFactory.java
+@@ -16,6 +16,7 @@
+ 
+ package com.android.internal.telephony;
+ 
++import android.util.Log;
+ import static com.android.internal.telephony.PhoneConstants.PHONE_TYPE_CDMA;
+ import static com.android.internal.telephony.PhoneConstants.PHONE_TYPE_CDMA_LTE;
+ 
+@@ -46,6 +47,7 @@ import com.android.internal.telephony.data.PhoneSwitcher;
+ import com.android.internal.telephony.data.TelephonyNetworkFactory;
+ import com.android.internal.telephony.euicc.EuiccCardController;
+ import com.android.internal.telephony.euicc.EuiccController;
++import com.android.internal.telephony.ims.ImsResolver;
+ import com.android.internal.telephony.imsphone.ImsPhone;
+ import com.android.internal.telephony.imsphone.ImsPhoneFactory;
+ import com.android.internal.telephony.metrics.MetricsCollector;
+@@ -246,7 +248,7 @@ public class PhoneFactory {
+                     // Default phone must be ready before ImsPhone is created because ImsService
+                     // might need it when it is being opened.
+                     for (int i = 0; i < numPhones; i++) {
+-                        sPhones[i].createImsPhone();
++                        sPhones[i].startMonitoringImsService();
+                     }
+                 } else {
+                     Rlog.i(LOG_TAG, "IMS is not supported on this device, skipping ImsResolver.");
+@@ -305,7 +307,7 @@ public class PhoneFactory {
+                 sPhones[i] = createPhone(context, i);
+                 if (context.getPackageManager().hasSystemFeature(
+                         PackageManager.FEATURE_TELEPHONY_IMS)) {
+-                    sPhones[i].createImsPhone();
++                    sPhones[i].startMonitoringImsService();
+                 }
+                 sTelephonyNetworkFactories[i] = new TelephonyNetworkFactory(
+                         Looper.myLooper(), sPhones[i]);
+diff --git a/src/java/com/android/internal/telephony/RIL.java b/src/java/com/android/internal/telephony/RIL.java
+index 70431f6a0c27285bdb31b0c9a7dfdf2c8a83cf75..4b9789d74b172670922083901cc6dba2d9e09802 100644
+--- a/src/java/com/android/internal/telephony/RIL.java
++++ b/src/java/com/android/internal/telephony/RIL.java
+@@ -27,6 +27,8 @@ import android.hardware.radio.V1_0.RadioError;
+ import android.hardware.radio.V1_0.RadioIndicationType;
+ import android.hardware.radio.V1_0.RadioResponseInfo;
+ import android.hardware.radio.V1_0.RadioResponseType;
++import android.hardware.radio.V1_0.SelectUiccSub;
++import android.hardware.radio.deprecated.V1_0.IOemHook;
+ import android.net.KeepalivePacketData;
+ import android.net.LinkProperties;
+ import android.os.AsyncResult;
+@@ -195,6 +197,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+     AtomicBoolean mTestingEmergencyCall = new AtomicBoolean(false);
+ 
+     final Integer mPhoneId;
++    private List<String> mOldRilFeatures;
+ 
+     private boolean mUseOldMncMccFormat;
+ 
+@@ -218,6 +221,12 @@ public class RIL extends BaseCommands implements CommandsInterface {
+      */
+     private final SparseArray<Set<Integer>> mDisabledRadioServices = new SparseArray<>();
+ 
++    /**
++     * A set that records if oem hook service is disabled in hal for
++     * a specific phone id slot to avoid further getService request.
++     */
++    Set<Integer> mDisabledOemHookServices = new HashSet();
++
+     /* default work source which will blame phone process */
+     private WorkSource mRILDefaultWorkSource;
+ 
+@@ -251,6 +260,9 @@ public class RIL extends BaseCommands implements CommandsInterface {
+     private final RadioProxyDeathRecipient mRadioProxyDeathRecipient;
+     final RilHandler mRilHandler;
+     private MockModem mMockModem;
++    OemHookResponse mOemHookResponse;
++    OemHookIndication mOemHookIndication;
++    volatile IOemHook mOemHookProxy = null;
+ 
+     // Thread-safe HashMap to map from RIL_REQUEST_XXX constant to HalVersion.
+     // This is for Radio HAL Fallback Compatibility feature. When a RIL request
+@@ -454,6 +466,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+     private synchronized void resetProxyAndRequestList(int service) {
+         if (service == RADIO_SERVICE) {
+             mRadioProxy = null;
++	    mOemHookProxy = null;
+         } else {
+             mServiceProxies.get(service).clear();
+         }
+@@ -471,6 +484,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+ 
+         if (service == RADIO_SERVICE) {
+             getRadioProxy(null);
++	    getOemHookProxy(null);
+         } else {
+             getRadioServiceProxy(service, null);
+         }
+@@ -1007,6 +1021,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+                 // Try to connect to RIL services and set response functions.
+                 if (service == RADIO_SERVICE) {
+                     getRadioProxy(null);
++		    getOemHookProxy(null);
+                 } else {
+                     getRadioServiceProxy(service, null);
+                 }
+@@ -1016,6 +1031,59 @@ public class RIL extends BaseCommands implements CommandsInterface {
+         }
+     }
+ 
++    /** Returns an {@link IOemHook} instance or null if the service is not available. */
++    @VisibleForTesting
++    public synchronized IOemHook getOemHookProxy(Message result) {
++        if (!SubscriptionManager.isValidPhoneId((mPhoneId))) return null;
++        if (!mIsCellularSupported) {
++            if (RILJ_LOGV) riljLog("getOemHookProxy: Not calling getService(): wifi-only");
++            if (result != null) {
++                AsyncResult.forMessage(result, null,
++                        CommandException.fromRilErrno(RADIO_NOT_AVAILABLE));
++                result.sendToTarget();
++            }
++            return null;
++        }
++
++        if (mOemHookProxy != null) {
++            return mOemHookProxy;
++        }
++
++        try {
++            if (mDisabledOemHookServices.contains(mPhoneId)) {
++                riljLoge("getOemHookProxy: mOemHookProxy for " + HIDL_SERVICE_NAME[mPhoneId]
++                        + " is disabled");
++            } else {
++                mOemHookProxy = IOemHook.getService(HIDL_SERVICE_NAME[mPhoneId], true);
++                if (mOemHookProxy != null) {
++                    // not calling linkToDeath() as ril service runs in the same process and death
++                    // notification for that should be sufficient
++                    mOemHookProxy.setResponseFunctions(mOemHookResponse, mOemHookIndication);
++                } else {
++                    mDisabledOemHookServices.add(mPhoneId);
++                    riljLoge("getOemHookProxy: mOemHookProxy for " + HIDL_SERVICE_NAME[mPhoneId]
++                            + " is disabled");
++                }
++            }
++        } catch (NoSuchElementException e) {
++            mOemHookProxy = null;
++            riljLoge("IOemHook service is not on the device HAL: " + e);
++        }  catch (RemoteException e) {
++            mOemHookProxy = null;
++            riljLoge("OemHookProxy getService/setResponseFunctions: " + e);
++        }
++
++        if (mOemHookProxy == null) {
++            if (result != null) {
++                AsyncResult.forMessage(result, null,
++                        CommandException.fromRilErrno(RADIO_NOT_AVAILABLE));
++                result.sendToTarget();
++            }
++        }
++
++        return mOemHookProxy;
++    }
++
+     //***** Constructors
+ 
+     @UnsupportedAppUsage
+@@ -1057,6 +1125,9 @@ public class RIL extends BaseCommands implements CommandsInterface {
+         mUseOldMncMccFormat = SystemProperties.getBoolean(
+                 "ro.telephony.use_old_mnc_mcc_format", false);
+ 
++        final String oldRilFeatures = SystemProperties.get("ro.telephony.ril.config", "");
++        mOldRilFeatures = Arrays.asList(oldRilFeatures.split(","));
++
+         TelephonyManager tm = (TelephonyManager) context.getSystemService(
+                 Context.TELEPHONY_SERVICE);
+         mIsCellularSupported = tm.isVoiceCapable() || tm.isSmsCapable() || tm.isDataCapable();
+@@ -1075,6 +1146,8 @@ public class RIL extends BaseCommands implements CommandsInterface {
+         mSimIndication = new SimIndication(this);
+         mVoiceResponse = new VoiceResponse(this);
+         mVoiceIndication = new VoiceIndication(this);
++	mOemHookResponse = new OemHookResponse(this);
++	mOemHookIndication = new OemHookIndication(this);
+         mRilHandler = new RilHandler();
+         mRadioProxyDeathRecipient = new RadioProxyDeathRecipient();
+         for (int service = MIN_SERVICE_IDX; service <= MAX_SERVICE_IDX; service++) {
+@@ -1121,6 +1194,7 @@ public class RIL extends BaseCommands implements CommandsInterface {
+         for (int service = MIN_SERVICE_IDX; service <= MAX_SERVICE_IDX; service++) {
+             if (service == RADIO_SERVICE) {
+                 getRadioProxy(null);
++		getOemHookProxy(null);
+             } else {
+                 if (proxies == null) {
+                     // Prevent telephony tests from calling the service
+@@ -2678,15 +2752,57 @@ public class RIL extends BaseCommands implements CommandsInterface {
+         }
+     }
+ 
+-    // TODO(b/171260715) Remove when HAL definition is removed
+     @UnsupportedAppUsage(maxTargetSdk = Build.VERSION_CODES.R, trackingBug = 170729553)
+     @Override
+     public void invokeOemRilRequestRaw(byte[] data, Message response) {
++        IOemHook oemHookProxy = getOemHookProxy(response);
++        if (oemHookProxy != null) {
++            RILRequest rr = obtainRequest(RIL_REQUEST_OEM_HOOK_RAW, response,
++                    mRILDefaultWorkSource);
++
++            if (RILJ_LOGD) {
++                riljLog(rr.serialString() + "> OEM_HOOK_RAW [" + IccUtils.bytesToHexString(data) + "]");
++            }
++
++            try {
++                oemHookProxy.sendRequestRaw(rr.mSerial, primitiveArrayToArrayList(data));
++            } catch (RemoteException | RuntimeException e) {
++                handleRadioProxyExceptionForRR(RADIO_SERVICE, "invokeOemRilRequestRaw", e);
++            }
++        } else {
++            // OEM Hook service is disabled for P and later devices.
++            // Deprecated OEM Hook APIs will perform no-op before being removed.
++            if (RILJ_LOGD) riljLog("Radio Oem Hook Service is disabled for P and later devices. ");
++        }
+     }
+ 
+-    // TODO(b/171260715) Remove when HAL definition is removed
+     @Override
+     public void invokeOemRilRequestStrings(String[] strings, Message result) {
++        IOemHook oemHookProxy = getOemHookProxy(result);
++        if (oemHookProxy != null) {
++            RILRequest rr = obtainRequest(RIL_REQUEST_OEM_HOOK_STRINGS, result,
++                    mRILDefaultWorkSource);
++
++            String logStr = "";
++            for (int i = 0; i < strings.length; i++) {
++                logStr = logStr + strings[i] + " ";
++            }
++            if (RILJ_LOGD) {
++                riljLog(rr.serialString() + "> " +  "OEM_HOOK_STRINGS strings = "
++                        + logStr);
++            }
++
++            try {
++                oemHookProxy.sendRequestStrings(rr.mSerial,
++                        new ArrayList<String>(Arrays.asList(strings)));
++            } catch (RemoteException | RuntimeException e) {
++                handleRadioProxyExceptionForRR(RADIO_SERVICE, "invokeOemRilRequestStrings", e);
++            }
++        } else {
++            // OEM Hook service is disabled for P and later devices.
++            // Deprecated OEM Hook APIs will perform no-op before being removed.
++            if (RILJ_LOGD) riljLog("Radio Oem Hook Service is disabled for P and later devices. ");
++        }
+     }
+ 
+     @Override
+@@ -4062,21 +4178,26 @@ public class RIL extends BaseCommands implements CommandsInterface {
+     }
+ 
+     @Override
+-    public void setUiccSubscription(int slotId, int appIndex, int subId, int subStatus,
+-            Message result) {
+-        RadioSimProxy simProxy = getRadioServiceProxy(RadioSimProxy.class, result);
+-        if (!simProxy.isEmpty()) {
++    public void setUiccSubscription(int appIndex, boolean activate, Message result) {
++        IRadio radioProxy = getRadioProxy(result);
++        if (radioProxy != null) {
+             RILRequest rr = obtainRequest(RIL_REQUEST_SET_UICC_SUBSCRIPTION, result,
+                     mRILDefaultWorkSource);
+ 
+             if (RILJ_LOGD) {
+                 riljLog(rr.serialString() + "> " + RILUtils.requestToString(rr.mRequest)
+-                        + " slot = " + slotId + " appIndex = " + appIndex
+-                        + " subId = " + subId + " subStatus = " + subStatus);
++                        + " appIndex: " + appIndex + " activate: " + activate);
+             }
+ 
++            SelectUiccSub info = new SelectUiccSub();
++            info.slot = mPhoneId;
++            info.appIndex = appIndex;
++
++            info.subType = mPhoneId;
++            info.actStatus = activate ? 1 : 0;
++
+             try {
+-                simProxy.setUiccSubscription(rr.mSerial, slotId, appIndex, subId, subStatus);
++                 radioProxy.setUiccSubscription(rr.mSerial, info);
+             } catch (RemoteException | RuntimeException e) {
+                 handleRadioProxyExceptionForRR(SIM_SERVICE, "setUiccSubscription", e);
+             }
+@@ -5914,11 +6035,14 @@ public class RIL extends BaseCommands implements CommandsInterface {
+             }
+         }
+         switch (voiceRat) {
++            case ServiceState.RIL_RADIO_TECHNOLOGY_GPRS: /* fallthrough */
++            case ServiceState.RIL_RADIO_TECHNOLOGY_EDGE: /* fallthrough */
+             case ServiceState.RIL_RADIO_TECHNOLOGY_UMTS: /* fallthrough */
+             case ServiceState.RIL_RADIO_TECHNOLOGY_HSDPA: /* fallthrough */
+             case ServiceState.RIL_RADIO_TECHNOLOGY_HSUPA: /* fallthrough */
+             case ServiceState.RIL_RADIO_TECHNOLOGY_HSPA: /* fallthrough */
+             case ServiceState.RIL_RADIO_TECHNOLOGY_HSPAP: /* fallthrough */
++            case ServiceState.RIL_RADIO_TECHNOLOGY_GSM: /* fallthrough */
+                 break;
+             default:
+                 // If we are not currently on WCDMA/HSPA, then we don't need to do a fixup.
+@@ -5969,4 +6093,34 @@ public class RIL extends BaseCommands implements CommandsInterface {
+                 return "UNKNOWN:" + service;
+         }
+     }
++
++    public boolean needsOldRilFeature(String feature) {
++        return mOldRilFeatures.contains(feature);
++    }
++
++    public static ArrayList<Byte> primitiveArrayToArrayList(byte[] arr) {
++        ArrayList<Byte> arrayList = new ArrayList<>(arr.length);
++        for (byte b : arr) {
++            arrayList.add(b);
++        }
++        return arrayList;
++    }
++
++    /** Convert a primitive int array to an ArrayList<Integer>. */
++    public static ArrayList<Integer> primitiveArrayToArrayList(int[] arr) {
++        ArrayList<Integer> arrayList = new ArrayList<>(arr.length);
++        for (int i : arr) {
++            arrayList.add(i);
++        }
++        return arrayList;
++    }
++
++    /** Convert an ArrayList of Bytes to an exactly-sized primitive array */
++    public static byte[] arrayListToPrimitiveArray(ArrayList<Byte> bytes) {
++        byte[] ret = new byte[bytes.size()];
++        for (int i = 0; i < ret.length; i++) {
++            ret[i] = bytes.get(i);
++        }
++        return ret;
++    }
+ }
+diff --git a/src/java/com/android/internal/telephony/ServiceStateTracker.java b/src/java/com/android/internal/telephony/ServiceStateTracker.java
+index efc79a44c2416f1bc05fe907bdfe36c9070d0300..4a88f1758669fbed22eca7ad310fd4ebdb529802 100755
+--- a/src/java/com/android/internal/telephony/ServiceStateTracker.java
++++ b/src/java/com/android/internal/telephony/ServiceStateTracker.java
+@@ -1341,8 +1341,15 @@ public class ServiceStateTracker extends Handler {
+                 }
+                 // This will do nothing in the 'radio not available' case
+                 setPowerStateToDesired();
+-                // These events are modem triggered, so pollState() needs to be forced
+-                pollStateInternal(true);
++                if (needsLegacyPollState()) {
++                    // Some older radio blobs need this to put device
++                    // properly into airplane mode.
++                    pollState();
++                } else {
++                    boolean forceTrigger =
++                        mCi.getRadioState() != TelephonyManager.RADIO_POWER_OFF;
++                    pollStateInternal(forceTrigger);
++                }
+                 break;
+ 
+             case EVENT_NETWORK_STATE_CHANGED:
+@@ -6085,4 +6092,11 @@ public class ServiceStateTracker extends Handler {
+     public @Nullable CellIdentity getLastKnownCellIdentity() {
+         return mLastKnownCellIdentity;
+     }
++
++    private boolean needsLegacyPollState() {
++        if (mCi instanceof RIL) {
++            return ((RIL) mCi).needsOldRilFeature("legacypollstate");
++        }
++        return false;
++    }
+ }
+diff --git a/src/java/com/android/internal/telephony/ims/ImsResolver.java b/src/java/com/android/internal/telephony/ims/ImsResolver.java
+index c3331d9c5477b248eb98d9abc9b639113f77c517..1cb5e4181490bd3419ae653ffbbee88959cf7012 100644
+--- a/src/java/com/android/internal/telephony/ims/ImsResolver.java
++++ b/src/java/com/android/internal/telephony/ims/ImsResolver.java
+@@ -75,6 +75,7 @@ import java.util.concurrent.CompletableFuture;
+ import java.util.concurrent.LinkedBlockingQueue;
+ import java.util.concurrent.TimeUnit;
+ import java.util.stream.Collectors;
++import android.os.SystemProperties;
+ 
+ /**
+  * Creates a list of ImsServices that are available to bind to based on the Device configuration
+@@ -417,6 +418,22 @@ public class ImsResolver implements ImsServiceController.ImsServiceControllerCal
+                 }
+             };
+ 
++
++    private ImsServiceControllerFactory mImsServiceControllerFactoryStaticBindingCompat =
++            new ImsServiceControllerFactory() {
++                @Override
++                public String getServiceInterface() {
++                    // The static method of binding does not use service interfaces.
++                    return null;
++                }
++
++                @Override
++                public ImsServiceController create(Context context, ComponentName componentName,
++                        ImsServiceController.ImsServiceControllerCallbacks callbacks,ImsFeatureBinderRepository repo) {
++                    return new ImsServiceControllerStaticCompat(context, componentName, callbacks,repo);
++                }
++            };
++
+     private ImsDynamicQueryManagerFactory mDynamicQueryManagerFactory =
+             ImsServiceFeatureQueryManager::new;
+ 
+@@ -432,6 +449,7 @@ public class ImsResolver implements ImsServiceController.ImsServiceControllerCal
+     // ImsServiceController callbacks.
+     private final Object mBoundServicesLock = new Object();
+     private int mNumSlots;
++    private final boolean mIsDynamicBinding = SystemProperties.getBoolean("ro.ims.dynamic_bind",true);
+     // Array index corresponds to slot, per slot there is a feature->package name mapping.
+     // should only be accessed from handler
+     private final SparseArray<Map<Integer, String>> mCarrierServices;
+@@ -578,18 +596,25 @@ public class ImsResolver implements ImsServiceController.ImsServiceControllerCal
+     // not locked, only accessed on a handler thread.
+     // Active ImsServiceControllers, which are bound to ImsServices.
+     private final Map<ComponentName, ImsServiceController> mActiveControllers = new HashMap<>();
++    // Only used as the Component name for legacy ImsServices that did not use dynamic binding.
++    private final ComponentName mStaticComponent;
+     private ImsServiceFeatureQueryManager mFeatureQueryManager;
+     private final SparseIntArray mSlotIdToSubIdMap;
+ 
+     public ImsResolver(Context context, String defaultMmTelPackageName,
+             String defaultRcsPackageName, int numSlots, ImsFeatureBinderRepository repo,
+             Looper looper) {
+-        Log.i(TAG, "device MMTEL package: " + defaultMmTelPackageName + ", device RCS package:"
+-                + defaultRcsPackageName);
+         mContext = context;
+         mNumSlots = numSlots;
+         mRepo = repo;
+         mReceiverContext = context.createContextAsUser(UserHandle.ALL, 0 /*flags*/);
++        mStaticComponent = new ComponentName(mContext, ImsResolver.class);
++
++	if(!mIsDynamicBinding)
++		defaultMmTelPackageName = mStaticComponent.getPackageName();
++
++        Log.i(TAG, "device MMTEL package: " + defaultMmTelPackageName + ", device RCS package:"
++                + defaultRcsPackageName);
+ 
+         mHandler = new ResolverHandler(looper);
+         mRunnableExecutor = new HandlerExecutor(mHandler);
+@@ -643,26 +668,32 @@ public class ImsResolver implements ImsServiceController.ImsServiceControllerCal
+         mFeatureQueryManager = mDynamicQueryManagerFactory.create(mContext, mDynamicQueryListener);
+ 
+         updateInstalledServicesCache();
++        
++	if(mIsDynamicBinding) {
++		IntentFilter appChangedFilter = new IntentFilter();
++        	appChangedFilter.addAction(Intent.ACTION_PACKAGE_CHANGED);
++        	appChangedFilter.addAction(Intent.ACTION_PACKAGE_REMOVED);
++        	appChangedFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
++        	appChangedFilter.addDataScheme("package");
++        	mReceiverContext.registerReceiver(mAppChangedReceiver, appChangedFilter);
++        	 mReceiverContext.registerReceiver(mConfigChangedReceiver, new IntentFilter(
++        	        CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED));
++
++        	UserManager userManager = (UserManager) mContext.getSystemService(Context.USER_SERVICE);
++        	if (userManager.isUserUnlocked()) {
++        	    mHandler.obtainMessage(HANDLER_BOOT_COMPLETE, null).sendToTarget();
++        	} else {
++        	    mReceiverContext.registerReceiver(mBootCompleted, new IntentFilter(
++        	            Intent.ACTION_BOOT_COMPLETED));
++        	    if (userManager.isUserUnlocked()) {
++        	        mHandler.obtainMessage(HANDLER_BOOT_COMPLETE, null).sendToTarget();
++        	    }
++        	}
++	}
++
++	else
++        	mHandler.obtainMessage(HANDLER_ADD_PACKAGE, mStaticComponent.getPackageName()).sendToTarget();
+ 
+-        IntentFilter appChangedFilter = new IntentFilter();
+-        appChangedFilter.addAction(Intent.ACTION_PACKAGE_CHANGED);
+-        appChangedFilter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+-        appChangedFilter.addAction(Intent.ACTION_PACKAGE_ADDED);
+-        appChangedFilter.addDataScheme("package");
+-        mReceiverContext.registerReceiver(mAppChangedReceiver, appChangedFilter);
+-        mReceiverContext.registerReceiver(mConfigChangedReceiver, new IntentFilter(
+-                CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED));
+-
+-        UserManager userManager = (UserManager) mContext.getSystemService(Context.USER_SERVICE);
+-        if (userManager.isUserUnlocked()) {
+-            mHandler.obtainMessage(HANDLER_BOOT_COMPLETE, null).sendToTarget();
+-        } else {
+-            mReceiverContext.registerReceiver(mBootCompleted, new IntentFilter(
+-                    Intent.ACTION_BOOT_COMPLETED));
+-            if (userManager.isUserUnlocked()) {
+-                mHandler.obtainMessage(HANDLER_BOOT_COMPLETE, null).sendToTarget();
+-            }
+-        }
+ 
+         // Update the package names of the carrier ImsServices if they do not exist already and
+         // possibly bind if carrier configs exist. Otherwise wait for CarrierConfigChanged
+@@ -1707,14 +1738,30 @@ public class ImsResolver implements ImsServiceController.ImsServiceControllerCal
+         }
+     }
+ 
+-    // Return the ImsServiceInfo specified for the package name. If the package name is null,
+-    // get all packages that support ImsServices.
+     private List<ImsServiceInfo> getImsServiceInfo(String packageName) {
+         List<ImsServiceInfo> infos = new ArrayList<>();
+-        // Search for Current ImsService implementations
+-        infos.addAll(searchForImsServices(packageName, mImsServiceControllerFactory));
+-        // Search for compat ImsService Implementations
+-        infos.addAll(searchForImsServices(packageName, mImsServiceControllerFactoryCompat));
++        if (!mIsDynamicBinding) {
++            // always return the same ImsService info.
++            infos.addAll(getStaticImsService());
++        } else {
++            // Search for Current ImsService implementations
++            infos.addAll(searchForImsServices(packageName, mImsServiceControllerFactory));
++            // Search for compat ImsService Implementations
++            infos.addAll(searchForImsServices(packageName, mImsServiceControllerFactoryCompat));
++        }
++        return infos;
++    }
++
++
++    private List<ImsServiceInfo> getStaticImsService() {
++        List<ImsServiceInfo> infos = new ArrayList<>();
++
++        ImsServiceInfo info = new ImsServiceInfo();
++        info.name = mStaticComponent;
++        info.controllerFactory = mImsServiceControllerFactoryStaticBindingCompat;
++        info.addFeatureForAllSlots(mNumSlots,ImsFeature.FEATURE_EMERGENCY_MMTEL);
++        info.addFeatureForAllSlots(mNumSlots,ImsFeature.FEATURE_MMTEL);
++        infos.add(info);
+         return infos;
+     }
+ 
+diff --git a/src/java/com/android/internal/telephony/ims/ImsServiceController.java b/src/java/com/android/internal/telephony/ims/ImsServiceController.java
+index 92e7d7117cba3aff5684f0c1d83fa39d72c7d830..98080de30c6ade63848e5b01b54b90fae0ffb388 100644
+--- a/src/java/com/android/internal/telephony/ims/ImsServiceController.java
++++ b/src/java/com/android/internal/telephony/ims/ImsServiceController.java
+@@ -387,7 +387,7 @@ public class ImsServiceController {
+                 mLocalLog.log("binding " + imsFeatureSet);
+                 Log.i(LOG_TAG, "Binding ImsService:" + mComponentName);
+                 try {
+-                    boolean bindSucceeded = mContext.bindService(imsServiceIntent,
++                    boolean bindSucceeded = startBindToService(imsServiceIntent,
+                             mImsServiceConnection, serviceFlags);
+                     if (!bindSucceeded) {
+                         mLocalLog.log("    binding failed, retrying in "
+@@ -424,6 +424,13 @@ public class ImsServiceController {
+                 features.remove(feature);
+             }
+         }
++     }
++     /* Starts the bind to the ImsService. Overridden by subclasses that need to access the service
++     * in a different fashion.
++     */
++    protected boolean startBindToService(Intent intent, ImsServiceConnection connection,
++            int flags) {
++        return mContext.bindService(intent, connection, flags);
+     }
+ 
+     /**
+diff --git a/src/java/com/android/internal/telephony/ims/ImsServiceControllerCompat.java b/src/java/com/android/internal/telephony/ims/ImsServiceControllerCompat.java
+index 13ec750819997dd1ba623f68d72f2f8f01ca5a2c..78621a98e812d0a3bee751ce110069369c58ca9d 100644
+--- a/src/java/com/android/internal/telephony/ims/ImsServiceControllerCompat.java
++++ b/src/java/com/android/internal/telephony/ims/ImsServiceControllerCompat.java
+@@ -234,7 +234,7 @@ public class ImsServiceControllerCompat extends ImsServiceController {
+         return mServiceController != null;
+     }
+ 
+-    private MmTelInterfaceAdapter getInterface(int slotId)
++    protected MmTelInterfaceAdapter getInterface(int slotId)
+             throws RemoteException {
+         IImsMMTelFeature feature = mServiceController.createMMTelFeature(slotId);
+         if (feature == null) {
+diff --git a/src/java/com/android/internal/telephony/ims/ImsServiceControllerStaticCompat.java b/src/java/com/android/internal/telephony/ims/ImsServiceControllerStaticCompat.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..b8b66eeb57180b82d41a4be164da1261226ad654
+--- /dev/null
++++ b/src/java/com/android/internal/telephony/ims/ImsServiceControllerStaticCompat.java
+@@ -0,0 +1,135 @@
++/*
++ * Copyright (C) 2018 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License
++ */
++
++package com.android.internal.telephony.ims;
++
++import android.content.ComponentName;
++import android.content.Context;
++import android.content.Intent;
++import android.content.ServiceConnection;
++import android.os.IBinder;
++import android.os.RemoteException;
++import android.os.ServiceManager;
++import android.util.Log;
++import com.android.ims.ImsFeatureBinderRepository;
++
++import com.android.ims.internal.IImsFeatureStatusCallback;
++import com.android.ims.internal.IImsService;
++import android.telephony.ims.feature.ImsFeature;
++
++/**
++ * A compat layer for communicating with older devices that still used the ServiceManager to get
++ * the ImsService.
++ */
++
++public class ImsServiceControllerStaticCompat extends ImsServiceControllerCompat {
++
++    private static final String TAG = "ImsSCStaticCompat";
++
++    private static final String IMS_SERVICE_NAME = "ims";
++
++    private class ImsDeathRecipient implements IBinder.DeathRecipient {
++
++        private ComponentName mComponentName;
++        private ServiceConnection mServiceConnection;
++
++        ImsDeathRecipient(ComponentName name, ServiceConnection conn) {
++            mComponentName = name;
++            mServiceConnection = conn;
++        }
++
++        @Override
++        public void binderDied() {
++            Log.e(TAG, "ImsService(" + mComponentName + ") died. Restarting...");
++            // This is hacky... ImsServiceController uses the traditional service binding procedure,
++            // so we have to emulate it when using a persistent service.
++            mServiceConnection.onBindingDied(mComponentName);
++        }
++    }
++
++    private IImsService mImsServiceCompat = null;
++    private ImsDeathRecipient mImsDeathRecipient = null;
++
++    public ImsServiceControllerStaticCompat(Context context, ComponentName componentName,
++            ImsServiceController.ImsServiceControllerCallbacks callbacks,ImsFeatureBinderRepository repo) {
++        super(context, componentName, callbacks,repo);
++    }
++
++    @Override
++    public boolean startBindToService(Intent intent, ImsServiceConnection connection, int flags) {
++        IBinder binder = ServiceManager.checkService(IMS_SERVICE_NAME);
++
++        if (binder == null) {
++            return false;
++        }
++        // This is a little hacky, but we are going to call the onServiceConnected to "pretend" like
++        // bindService has completed here, which will pass the binder to setServiceController and
++        // set up all supporting structures.
++        ComponentName name = new ComponentName(mContext, ImsServiceControllerStaticCompat.class);
++        connection.onServiceConnected(name, binder);
++        try {
++            mImsDeathRecipient = new ImsDeathRecipient(name, connection);
++            binder.linkToDeath(mImsDeathRecipient, 0);
++        } catch (RemoteException e) {
++            // The binder connection is already dead.. signal to the ImsServiceController to retry.
++            mImsDeathRecipient.binderDied();
++            mImsDeathRecipient = null;
++        }
++        return true;
++    }
++
++    @Override
++    protected void setServiceController(IBinder serviceController) {
++        if (serviceController == null) {
++            // The service controller has been set to null, meaning it has been unbound or died.
++            // Unlink if needed.
++            if (mImsServiceCompat != null) {
++                mImsServiceCompat.asBinder().unlinkToDeath(mImsDeathRecipient, 0);
++            }
++            mImsDeathRecipient = null;
++        }
++        mImsServiceCompat = IImsService.Stub.asInterface(serviceController);
++    }
++
++    @Override
++    // used for add/remove features and cleanup in ImsServiceController.
++    protected boolean isServiceControllerAvailable() {
++        return mImsServiceCompat != null;
++    }
++
++    @Override
++    protected MmTelInterfaceAdapter getInterface(int slotId) {
++        if (mImsServiceCompat == null) {
++            Log.w(TAG, "getInterface: IImsService returned null.");
++            return null;
++        }
++        return new ImsServiceInterfaceAdapter(slotId, mImsServiceCompat.asBinder());
++    }
++
++    @Override
++    protected void registerImsFeatureStatusCallback(int slotId, int featureType,
++            IImsFeatureStatusCallback c) throws RemoteException {
++	    
++	    c.notifyImsFeatureStatus(ImsFeature.STATE_READY);
++    }
++
++
++    @Override
++    protected void unregisterImsFeatureStatusCallback(int slotId, int featureType,
++            IImsFeatureStatusCallback c) {
++    }
++
++}
+diff --git a/src/java/com/android/internal/telephony/ims/ImsServiceInterfaceAdapter.java b/src/java/com/android/internal/telephony/ims/ImsServiceInterfaceAdapter.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..f554e6fd66845943894fa1319a6c56d87d253660
+--- /dev/null
++++ b/src/java/com/android/internal/telephony/ims/ImsServiceInterfaceAdapter.java
+@@ -0,0 +1,128 @@
++/*
++ * Copyright (C) 2018 The Android Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License
++ */
++
++package com.android.internal.telephony.ims;
++
++import android.app.PendingIntent;
++import android.os.IBinder;
++import android.os.Message;
++import android.os.RemoteException;
++import android.telephony.ims.ImsCallProfile;
++import android.telephony.ims.compat.feature.ImsFeature;
++
++import com.android.ims.internal.IImsCallSession;
++import com.android.ims.internal.IImsConfig;
++import com.android.ims.internal.IImsEcbm;
++import com.android.ims.internal.IImsMultiEndpoint;
++import com.android.ims.internal.IImsRegistrationListener;
++import com.android.ims.internal.IImsService;
++import com.android.ims.internal.IImsUt;
++
++/**
++ * Compatibility layer for IImsService implementations of IMS. Converts "generic" MMTel commands
++ * to implementation.
++ */
++
++public class ImsServiceInterfaceAdapter extends MmTelInterfaceAdapter {
++
++    private static final int SERVICE_ID = ImsFeature.MMTEL;
++
++    public ImsServiceInterfaceAdapter(int slotId, IBinder binder) {
++        super(slotId, binder);
++    }
++
++    public int startSession(PendingIntent incomingCallIntent, IImsRegistrationListener listener)
++            throws RemoteException {
++        return getInterface().open(mSlotId, ImsFeature.MMTEL, incomingCallIntent, listener);
++    }
++
++    public void endSession(int sessionId) throws RemoteException {
++        getInterface().close(sessionId);
++    }
++
++    public boolean isConnected(int callSessionType, int callType) throws RemoteException {
++        return getInterface().isConnected(SERVICE_ID, callSessionType, callType);
++    }
++
++    public boolean isOpened() throws RemoteException {
++        return getInterface().isOpened(SERVICE_ID);
++    }
++
++    public int getFeatureState() throws RemoteException {
++        return ImsFeature.STATE_READY;
++    }
++
++    public void addRegistrationListener(IImsRegistrationListener listener) throws RemoteException {
++        getInterface().addRegistrationListener(mSlotId, ImsFeature.MMTEL, listener);
++    }
++
++    public void removeRegistrationListener(IImsRegistrationListener listener)
++            throws RemoteException {
++        // Not Implemented in the old ImsService. If the registration listener becomes invalid, the
++        // ImsService will remove it.
++    }
++
++    public ImsCallProfile createCallProfile(int sessionId, int callSessionType, int callType)
++            throws RemoteException {
++        return getInterface().createCallProfile(sessionId, callSessionType, callType);
++    }
++
++    public IImsCallSession createCallSession(int sessionId, ImsCallProfile profile)
++            throws RemoteException {
++        return getInterface().createCallSession(sessionId, profile, null);
++    }
++
++    public IImsCallSession getPendingCallSession(int sessionId, String callId)
++            throws RemoteException {
++        return getInterface().getPendingCallSession(sessionId, callId);
++    }
++
++    public IImsUt getUtInterface() throws RemoteException {
++        return getInterface().getUtInterface(SERVICE_ID);
++    }
++
++    public IImsConfig getConfigInterface() throws RemoteException {
++        return getInterface().getConfigInterface(mSlotId);
++    }
++
++    public void turnOnIms() throws RemoteException {
++        getInterface().turnOnIms(mSlotId);
++    }
++
++    public void turnOffIms() throws RemoteException {
++        getInterface().turnOffIms(mSlotId);
++    }
++
++    public IImsEcbm getEcbmInterface() throws RemoteException {
++        return getInterface().getEcbmInterface(SERVICE_ID);
++    }
++
++    public void setUiTTYMode(int uiTtyMode, Message onComplete) throws RemoteException {
++        getInterface().setUiTTYMode(SERVICE_ID, uiTtyMode, onComplete);
++    }
++
++    public IImsMultiEndpoint getMultiEndpointInterface() throws RemoteException {
++        return getInterface().getMultiEndpointInterface(SERVICE_ID);
++    }
++
++    private IImsService getInterface() throws RemoteException {
++        IImsService feature = IImsService.Stub.asInterface(mBinder);
++        if (feature == null) {
++            throw new RemoteException("Binder not Available");
++        }
++        return feature;
++    }
++}
+diff --git a/src/java/com/android/internal/telephony/uicc/IccRecords.java b/src/java/com/android/internal/telephony/uicc/IccRecords.java
+index 3a7db7fa7e25cd4347695dfa42cd02df1c7cca5f..2e5f537a97d265c7e11021d9ec7e5ffc11061a27 100644
+--- a/src/java/com/android/internal/telephony/uicc/IccRecords.java
++++ b/src/java/com/android/internal/telephony/uicc/IccRecords.java
+@@ -1279,11 +1279,13 @@ public abstract class IccRecords extends Handler implements IccConstants {
+     @CarrierNameDisplayConditionBitmask
+     public static int convertSpnDisplayConditionToBitmask(int condition) {
+         int carrierNameDisplayCondition = 0;
++        boolean plmnRequired = (condition & 0x1) == 0x1;
++        boolean spnRequired = (condition & 0x2) == 0;
+         // b1 = 0: display of registered PLMN name not required when registered PLMN is
+         // either HPLMN or a PLMN in the service provider PLMN list.
+         // b1 = 1: display of registered PLMN name required when registered PLMN is
+         // either HPLMN or a PLMN in the service provider PLMN list.
+-        if ((condition & 0x1) == 0x1) {
++        if (plmnRequired && !spnRequired) {
+             carrierNameDisplayCondition |= CARRIER_NAME_DISPLAY_CONDITION_BITMASK_PLMN;
+         }
+ 
+@@ -1291,7 +1293,7 @@ public abstract class IccRecords extends Handler implements IccConstants {
+         // PLMN is neither HPLMN nor a PLMN in the service provider PLMN list.
+         // b2 = 1: display of the servier provider name is **not required** when
+         // registered PLMN is neither HPLMN nor PLMN in the service provider PLMN list.
+-        if ((condition & 0x2) == 0) {
++        if (spnRequired) {
+             carrierNameDisplayCondition |= CARRIER_NAME_DISPLAY_CONDITION_BITMASK_SPN;
+         }
+ 
+diff --git a/src/java/com/android/internal/telephony/uicc/UiccProfile.java b/src/java/com/android/internal/telephony/uicc/UiccProfile.java
+index aca03ca53b4eb8c5c5d5077a2899b2387e67fe61..96c760c8e6748301951646b0a6a4c0659f7d462c 100644
+--- a/src/java/com/android/internal/telephony/uicc/UiccProfile.java
++++ b/src/java/com/android/internal/telephony/uicc/UiccProfile.java
+@@ -61,6 +61,7 @@ import com.android.internal.telephony.MccTable;
+ import com.android.internal.telephony.Phone;
+ import com.android.internal.telephony.PhoneConstants;
+ import com.android.internal.telephony.PhoneFactory;
++import com.android.internal.telephony.RIL;
+ import com.android.internal.telephony.SubscriptionController;
+ import com.android.internal.telephony.TelephonyStatsLog;
+ import com.android.internal.telephony.cat.CatService;
+@@ -114,6 +115,7 @@ public class UiccProfile extends IccCard {
+     private CatService mCatService;
+     private UiccCarrierPrivilegeRules mCarrierPrivilegeRules;
+     private UiccCarrierPrivilegeRules mTestOverrideCarrierPrivilegeRules;
++    private boolean mDefaultAppsActivated;
+     private boolean mDisposed = false;
+ 
+     private RegistrantList mOperatorBrandOverrideRegistrants = new RegistrantList();
+@@ -1127,10 +1129,59 @@ public class UiccProfile extends IccCard {
+             if (mRadioTech != ServiceState.RIL_RADIO_TECHNOLOGY_UNKNOWN) {
+                 setCurrentAppType(ServiceState.isGsm(mRadioTech));
+             }
++
++            if (needsSimActivation()) {
++                if (ics.mCardState == CardState.CARDSTATE_PRESENT) {
++                    if (!mDefaultAppsActivated) {
++                        activateDefaultApps();
++                        mDefaultAppsActivated = true;
++                    }
++                } else {
++                    // SIM removed, reset activation flag to make sure
++                    // to re-run the activation at the next insertion
++                    mDefaultAppsActivated = false;
++                }
++            }
++
+             updateIccAvailability(true);
+         }
+     }
+ 
++    private boolean needsSimActivation() {
++        if (mCi instanceof RIL) {
++            return ((RIL) mCi).needsOldRilFeature("simactivation");
++        }
++        return false;
++    }
++
++    private void activateDefaultApps() {
++        int gsmIndex = mGsmUmtsSubscriptionAppIndex;
++        int cdmaIndex = mCdmaSubscriptionAppIndex;
++
++        if (gsmIndex < 0 || cdmaIndex < 0) {
++            for (int i = 0; i < mUiccApplications.length; i++) {
++                if (mUiccApplications[i] == null) {
++                    continue;
++                }
++
++                AppType appType = mUiccApplications[i].getType();
++                if (gsmIndex < 0 &&
++                        (appType == AppType.APPTYPE_USIM || appType == AppType.APPTYPE_SIM)) {
++                    gsmIndex = i;
++                } else if (cdmaIndex < 0 &&
++                        (appType == AppType.APPTYPE_CSIM || appType == AppType.APPTYPE_RUIM)) {
++                    cdmaIndex = i;
++                }
++            }
++        }
++        if (gsmIndex >= 0) {
++            mCi.setUiccSubscription(gsmIndex, true, null);
++        }
++        if (cdmaIndex >= 0) {
++            mCi.setUiccSubscription(cdmaIndex, true, null);
++        }
++    }
++
+     private void createAndUpdateCatServiceLocked() {
+         if (mUiccApplications.length > 0 && mUiccApplications[0] != null) {
+             // Initialize or Reinitialize CatService
+diff --git a/tests/telephonytests/src/com/android/internal/telephony/SimulatedCommandsVerifier.java b/tests/telephonytests/src/com/android/internal/telephony/SimulatedCommandsVerifier.java
+index 60add09651ba12d6c836bfdddedfc04a9e0ab7e6..a7f24324038f5d711fd8f589a42cbfc29e6ec851 100644
+--- a/tests/telephonytests/src/com/android/internal/telephony/SimulatedCommandsVerifier.java
++++ b/tests/telephonytests/src/com/android/internal/telephony/SimulatedCommandsVerifier.java
+@@ -1336,8 +1336,7 @@ public class SimulatedCommandsVerifier implements CommandsInterface {
+     }
+ 
+     @Override
+-    public void setUiccSubscription(int slotId, int appIndex, int subId, int subStatus,
+-                                    Message result) {
++    public void setUiccSubscription(int appIndex, boolean activate, Message result) {
+ 
+     }
+ 

@@ -1,0 +1,134 @@
+[
+ {
+  "path": "build/soong",
+  "fork": "LineageOS-UL/android_build_soong",
+  "upstream": "LineageOS/android_build_soong",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "bionic",
+  "fork": "LOSUL-hacker/android_bionic",
+  "upstream": "LineageOS/android_bionic",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "device/lineage/sepolicy",
+  "fork": "LineageOS-UL/android_device_lineage_sepolicy",
+  "upstream": "LineageOS/android_device_lineage_sepolicy",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "frameworks/av",
+  "fork": "LOSUL-hacker/android_frameworks_av",
+  "upstream": "LineageOS/android_frameworks_av",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "frameworks/base",
+  "fork": "LOSUL-hacker/android_frameworks_base",
+  "upstream": "LineageOS/android_frameworks_base",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "frameworks/native",
+  "fork": "LOSUL-hacker/android_frameworks_native",
+  "upstream": "LineageOS/android_frameworks_native",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "frameworks/opt/telephony",
+  "fork": "LOSUL-hacker/android_frameworks_opt_telephony",
+  "upstream": "LineageOS/android_frameworks_opt_telephony",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "hardware/interfaces",
+  "fork": "LineageOS-UL/android_hardware_interfaces",
+  "upstream": "LineageOS/android_hardware_interfaces",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "hardware/lineage/interfaces",
+  "fork": "LineageOS-UL/android_hardware_lineage_interfaces",
+  "upstream": "LineageOS/android_hardware_lineage_interfaces",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "hardware/qcom/audio",
+  "fork": "LineageOS-UL/android_hardware_qcom_audio",
+  "upstream": "LineageOS/android_hardware_qcom_audio",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "hardware/qcom-caf/wlan",
+  "fork": "LineageOS-UL/android_hardware_qcom_wlan",
+  "upstream": "LineageOS/android_hardware_qcom_wlan",
+  "branch": "lineage-20.0-caf"
+ },
+ {
+  "path": "packages/apps/Nfc",
+  "fork": "LOSUL-hacker/android_packages_apps_Nfc",
+  "upstream": "LineageOS/android_packages_apps_Nfc",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "packages/inputmethods/LatinIME",
+  "fork": "LineageOS-UL/android_packages_inputmethods_LatinIME",
+  "upstream": "LineageOS/android_packages_inputmethods_LatinIME",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "packages/modules/adb",
+  "fork": "LOSUL-hacker/android_packages_modules_adb",
+  "upstream": "LineageOS/android_packages_modules_adb",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "packages/modules/Bluetooth",
+  "fork": "LOSUL-hacker/android_packages_modules_Bluetooth",
+  "upstream": "LineageOS/android_packages_modules_Bluetooth",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "packages/modules/Connectivity",
+  "fork": "LOSUL-hacker/android_packages_modules_Connectivity",
+  "upstream": "LineageOS/android_packages_modules_Connectivity",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "packages/modules/Wifi",
+  "fork": "LOSUL-hacker/android_packages_modules_Wifi",
+  "upstream": "LineageOS/android_packages_modules_Wifi",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "system/core",
+  "fork": "LineageOS-UL/android_system_core",
+  "upstream": "LineageOS/android_system_core",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "system/netd",
+  "fork": "LineageOS-UL/android_system_netd",
+  "upstream": "LineageOS/android_system_netd",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "system/sepolicy",
+  "fork": "LineageOS-UL/android_system_sepolicy",
+  "upstream": "LineageOS/android_system_sepolicy",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "vendor/lineage",
+  "fork": "LOSUL-hacker/android_vendor_lineage",
+  "upstream": "LineageOS/android_vendor_lineage",
+  "branch": "lineage-20.0"
+ },
+ {
+  "path": "vendor/qcom/opensource/power",
+  "fork": "LineageOS-UL/android_vendor_qcom_opensource_power",
+  "upstream": "LineageOS/android_vendor_qcom_opensource_power",
+  "branch": "lineage-20.0"
+ }
+]
